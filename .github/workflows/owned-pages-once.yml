@@ -1,0 +1,91 @@
+name: Owned repository public Pages once
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed main commit (40 characters)
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: owned-pages-once
+  cancel-in-progress: false
+jobs:
+  public-build:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Install hash-pinned test dependencies
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/requirements-verification.txt
+      - name: Offline public projection boundary tests
+        env:
+          TYPESAFE_ENABLED: '0'
+          GEMINI_ENABLED: '0'
+          GEMINI_FALLBACK_ENABLED: '0'
+        run: |
+          python -B - <<'PY'
+          import sys, socket, unittest
+          def deny(*args, **kwargs):
+              raise RuntimeError('Network prohibited during public projection tests')
+          socket.create_connection = deny
+          socket.socket.connect = deny
+          socket.socket.connect_ex = deny
+          sys.path.insert(0, 'scripts')
+          for name in ('test_public_site', 'test_operations_public_projection', 'test_improvement_public_projection'):
+              result = unittest.TextTestRunner(verbosity=1).run(unittest.defaultTestLoader.loadTestsFromModule(__import__(name)))
+              if not result.wasSuccessful(): raise SystemExit(1)
+          PY
+      - name: Build only reviewed 34 public files and verify unchanged blocked status
+        run: |
+          python -B scripts/build_public_site.py --output dist --commit "$GITHUB_SHA"
+          python -B scripts/check_public_site.py --root dist
+          python -B - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          active = sorted(p.name for p in Path('.github/workflows').rglob('*') if p.is_file() and p.suffix in {'.yml', '.yaml'})
+          assert active == ['owned-pages-once.yml', 'owned-repo-smoke.yml'], active
+          assert len(list(Path('.github/workflows-quarantined/20261023').glob('*.yml'))) == 30
+          manifest = json.loads(Path('dist/deployment.json').read_text())
+          assert len(manifest['files']) == 34
+          assert manifest['site_hash'] == 'e7a668df7081169f1562f51090f01379f9b287e3bf86cfefae3fda923a46d62a'
+          assert set(p.relative_to('dist').as_posix() for p in Path('dist').rglob('*') if p.is_file()) == set(manifest['files']) | {'deployment.json'}
+          assert not any(p.is_symlink() for p in Path('dist').rglob('*'))
+          for name, expected in manifest['files'].items():
+              assert hashlib.sha256((Path('dist') / name).read_bytes()).hexdigest() == expected
+          review = json.loads(Path('dist/data/dashboard_runtime.json').read_text())['continuity_review']
+          assert review['status'] == 'RESTRICTED_ANALYSIS_BLOCKED'
+          assert review['production_recovered'] is False and review['operations_execution_verified'] is False
+          PY
+          tar --directory dist -cvf "$RUNNER_TEMP/artifact.tar" .
+      - name: Upload only the verified public Pages archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
+  deploy:
+    needs: public-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the verified public archive
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
