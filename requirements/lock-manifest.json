@@ -603,6 +603,24 @@
       "type": "commit",
       "verified_at": "2026-10-22T21:36:00Z",
       "source": "https://api.github.com/repos/actions/deploy-pages/git/ref/tags/v5.0.1"
+    },
+    {
+      "ref": "actions/upload-artifact@v4.6.2",
+      "repository": "actions/upload-artifact",
+      "tag": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "type": "commit",
+      "verified_at": "2026-10-23T21:52:40Z",
+      "source": "https://api.github.com/repos/actions/upload-artifact/git/ref/tags/v4.6.2"
+    },
+    {
+      "ref": "actions/deploy-pages@v4.0.5",
+      "repository": "actions/deploy-pages",
+      "tag": "v4.0.5",
+      "sha": "d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e",
+      "type": "commit",
+      "verified_at": "2026-10-23T21:52:40Z",
+      "source": "https://api.github.com/repos/actions/deploy-pages/git/ref/tags/v4.0.5"
     }
   ]
 }

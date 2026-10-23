@@ -1,0 +1,39 @@
+name: Owned Core local saved-input epoch
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: owned-core-local
+  cancel-in-progress: false
+jobs:
+  local-review:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Verify destination epoch and compute local review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          CODE="$RUNNER_TEMP/owned-core-code-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$CODE"
+          install -m 644 scripts/destination_core_epoch.py scripts/owned_core_local.py scripts/repository_provenance.py scripts/repository_snapshot_reader.py "$CODE/"
+          python -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import owned_core_local as m; sys.argv = [m.__file__, *sys.argv[2:]]; raise SystemExit(m.main())' "$CODE" --root "$GITHUB_WORKSPACE" --output "$RUNNER_TEMP/owned-core-local-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Retain destination local checkpoint
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: owned-core-local-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/owned-core-local-${{ github.run_id }}-${{ github.run_attempt }}/checkpoint.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9

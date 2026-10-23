@@ -269,8 +269,8 @@ class ActiveWorkflowTests(unittest.TestCase):
             with self.subTest(rows=len(rows)), self.assertRaises(ValueError):
                 approved_action_refs({'actions': rows})
 
-    def test_validator_parser_is_bootstrapped_from_locked_profile(self):
-        workflow = yaml.safe_load((ROOT / '.github/workflows/dependency-profiles.yml').read_text(encoding='utf-8'))
+    def test_archived_validator_parser_is_bootstrapped_from_locked_profile(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows-quarantined/20261023/dependency-profiles.yml').read_text(encoding='utf-8'))
         steps = workflow['jobs']['verify-profiles']['steps']
         bootstrap = next(i for i, step in enumerate(steps)
                          if step.get('name') == 'Install locked validator dependencies')
@@ -297,8 +297,8 @@ class ActiveWorkflowTests(unittest.TestCase):
             if re.search(r'-r\s+requirements/requirements-[a-z]+\.txt', text):
                 self.assertRegex(text, r'python-version:\s*[\'"]3\.11(?:\.\d+)?[\'"]')
 
-    def test_ocr_setup_is_bounded_and_uses_only_ubuntu_sources(self):
-        workflow = yaml.safe_load((ROOT / '.github/workflows/image-ocr-tests.yml').read_text())
+    def test_archived_ocr_setup_is_bounded_and_uses_only_ubuntu_sources(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows-quarantined/20261023/image-ocr-tests.yml').read_text())
         job = workflow['jobs']['korean-ocr']
         self.assertEqual(job['runs-on'], 'ubuntu-24.04')
         self.assertEqual(job['timeout-minutes'], 10)

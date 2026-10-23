@@ -22,21 +22,11 @@ jobs:
       - name: Install hash-pinned offline test dependencies
         run: |
           python -m pip install --require-hashes --only-binary=:all: -r requirements/requirements-verification.txt
-      - name: Verify only smoke is runnable and old workflows are quarantined
-        run: |
-          python -B - <<'PY'
-          from pathlib import Path
-          import yaml
-          active = sorted(p.as_posix() for p in Path(".github/workflows").rglob("*") if p.is_file() and p.suffix in {".yml", ".yaml"})
-          assert active == [".github/workflows/owned-repo-smoke.yml"], active
-          old = list(Path(".github/workflows-quarantined/20261023").glob("*.yml"))
-          assert len(old) == 30, len(old)
-          doc = yaml.safe_load(Path(active[0]).read_text())
-          assert doc.get("on", doc.get(True)) == {"workflow_dispatch": None}
-          assert doc["permissions"] == {"contents": "read"}
-          PY
+      - name: Verify owned workflow quarantine policy
+        run: python -B scripts/check_owned_workflow_policy.py --root .
       - name: Run fixture-only tests with Python socket access blocked
         env:
+          PYTHONPATH: ${{ github.workspace }}/scripts/offline_test_policy:${{ github.workspace }}/scripts
           TYPESAFE_ENABLED: '0'
           GEMINI_ENABLED: '0'
           GEMINI_FALLBACK_ENABLED: '0'
@@ -49,7 +39,7 @@ jobs:
           socket.socket.connect = deny
           socket.socket.connect_ex = deny
           sys.path.insert(0, 'scripts')
-          for name in ('test_preflight_static', 'test_workflow_status'):
+          for name in ('test_preflight_static', 'test_workflow_status', 'test_dependency_pins', 'test_owned_workflow_policy', 'test_owned_workflow_policy_independent', 'test_repository_provenance', 'test_repository_provenance_independent', 'test_repository_snapshot_reader', 'test_repository_snapshot_reader_independent'):
               module = __import__(name)
               result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(module))
               if not result.wasSuccessful():
