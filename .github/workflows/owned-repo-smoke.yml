@@ -1,0 +1,57 @@
+name: Owned repository offline smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: owned-repository-offline-smoke
+  cancel-in-progress: false
+jobs:
+  offline-smoke:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Install hash-pinned offline test dependencies
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/requirements-verification.txt
+      - name: Verify only smoke is runnable and old workflows are quarantined
+        run: |
+          python -B - <<'PY'
+          from pathlib import Path
+          import yaml
+          active = sorted(p.as_posix() for p in Path(".github/workflows").rglob("*") if p.is_file() and p.suffix in {".yml", ".yaml"})
+          assert active == [".github/workflows/owned-repo-smoke.yml"], active
+          old = list(Path(".github/workflows-quarantined/20261023").glob("*.yml"))
+          assert len(old) == 30, len(old)
+          doc = yaml.safe_load(Path(active[0]).read_text())
+          assert doc.get("on", doc.get(True)) == {"workflow_dispatch": None}
+          assert doc["permissions"] == {"contents": "read"}
+          PY
+      - name: Run fixture-only tests with Python socket access blocked
+        env:
+          TYPESAFE_ENABLED: '0'
+          GEMINI_ENABLED: '0'
+          GEMINI_FALLBACK_ENABLED: '0'
+        run: |
+          python -B - <<'PY'
+          import sys, socket, runpy, unittest
+          def deny(*args, **kwargs):
+              raise RuntimeError('Network prohibited during offline smoke tests')
+          socket.create_connection = deny
+          socket.socket.connect = deny
+          socket.socket.connect_ex = deny
+          sys.path.insert(0, 'scripts')
+          for name in ('test_preflight_static', 'test_workflow_status'):
+              module = __import__(name)
+              result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(module))
+              if not result.wasSuccessful():
+                  raise SystemExit(1)
+          PY
