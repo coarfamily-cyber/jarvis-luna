@@ -70,10 +70,12 @@ def positive(value):
 
 
 def validate_policy(policy):
-    need(type(policy) is dict and set(policy) == {'schema', 'repository', 'repository_id', 'owner_id',
+    need(type(policy) is dict, 'policy_schema')
+    fields = {'schema', 'repository', 'repository_id', 'owner_id',
         'workflow', 'profile', 'import_record_digest', 'legacy_inventory_digest',
         'legacy_unresolved_digest', 'source_final_tail_digest', 'code_contract_digest',
-        'authorization_reference_digest', 'holds', 'genesis_workflow_id', 'genesis_run_number'}, 'policy_schema')
+        'authorization_reference_digest', 'holds', 'genesis_workflow_id', 'genesis_run_number'}
+    need(set(policy) in (fields, fields | {'failed_prefix_transition'}), 'policy_schema')
     need((policy['schema'], policy['repository'], policy['repository_id'], policy['owner_id'],
           policy['workflow'], policy['profile']) == (SCHEMA, REPOSITORY, REPOSITORY_ID, OWNER_ID,
           WORKFLOW, PROFILE), 'destination_profile_binding')
@@ -84,6 +86,20 @@ def validate_policy(policy):
     for k in policy:
         if k.endswith('_digest'):
             hashed(policy[k])
+    if 'failed_prefix_transition' in policy:
+        transition = policy['failed_prefix_transition']
+        need(type(transition) is dict and set(transition) == {'prior_policy','run','classification'}, 'failure_transition_schema')
+        prior = transition['prior_policy']
+        need(type(prior) is dict and set(prior) == fields, 'single_failure_transition_only')
+        validate_policy(prior)
+        need(all(policy[k] == prior[k] for k in fields if k != 'code_contract_digest'), 'failure_transition_authority_changed')
+        need(transition['classification'] == 'initial_local_preflight_failed_no_retention', 'failure_transition_classification')
+        run = transition['run']
+        need(type(run) is dict and set(run) == {'id','run_number','run_attempt','head_sha','job_id'}, 'failure_transition_run')
+        for k in ('id','job_id'): positive(run[k])
+        need(type(run['run_number']) is int and run['run_number'] == 1 and
+             type(run['run_attempt']) is int and run['run_attempt'] == 1, 'failure_transition_initial_only')
+        hashed(run['head_sha'],40)
     return digest(policy)
 
 

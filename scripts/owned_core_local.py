@@ -221,6 +221,41 @@ def authenticate_checkpoint(reader, policy, run, predecessor, *, root, expected_
                 'checkpoint_digest':epoch.digest(cp),'artifact_id':a['id'],'artifact_digest':a['digest']}
 
 
+def authenticate_failed_prefix(reader, policy, run, *, root):
+    """Preserve one reviewed failed initial producer; never infer fresh history.
+
+    This proves only a completed local preflight failure with skipped retention.
+    It does not assert no effects for legacy sources or create a checkpoint.
+    """
+    transition=policy['failed_prefix_transition']; pin=transition['run']
+    validate_run(run)
+    epoch.need(all(run.get(k)==pin[k] for k in ('id','run_number','run_attempt','head_sha')) and
+               run.get('workflow_id')==policy['genesis_workflow_id'] and
+               run.get('status')=='completed' and run.get('conclusion')=='failure','failed_prefix_run_binding')
+    verify_historical_code(root,transition['prior_policy'],run['head_sha'])
+    rid=run['id'];jobs=listing(reader,f'/actions/runs/{rid}/attempts/1/jobs','jobs')
+    epoch.need(len(jobs)==1,'failed_prefix_job_inventory')
+    job=jobs[0]
+    epoch.need(job.get('id')==pin['job_id'] and job.get('run_id')==rid and job.get('run_attempt')==1 and
+               job.get('head_sha')==run['head_sha'] and job.get('status')=='completed' and
+               job.get('conclusion')=='failure','failed_prefix_job_binding')
+    steps=job.get('steps');epoch.need(type(steps)is list,'failed_prefix_steps')
+    expected={'Set up job':'success',
+              'Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1':'success',
+              'Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97':'success',
+              REQUIRED_STEPS[0]:'failure',REQUIRED_STEPS[1]:'skipped',
+              'Post Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97':'skipped',
+              'Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1':'success',
+              'Complete job':'success'}
+    epoch.need(len(steps)==len(expected) and {s.get('name') for s in steps if type(s)is dict}==set(expected),'failed_prefix_step_inventory')
+    epoch.need(all(type(s)is dict and s.get('status')=='completed' and s.get('conclusion')==expected[s['name']] for s in steps),'failed_prefix_step_state')
+    epoch.need(listing(reader,f'/actions/runs/{rid}/artifacts','artifacts')==[],'failed_prefix_artifact_present')
+    return {'classification':transition['classification'],'run_id':rid,'run_number':1,
+            'run_attempt':1,'head_sha':run['head_sha'],'job_id':pin['job_id'],
+            'prior_epoch':epoch.digest(transition['prior_policy']),'artifact_count':0,
+            'legacy_effects':'not_determined_or_cleared'}
+
+
 def git(root,*args,cap=32*1024*1024):
     result=subprocess.run(['git','-C',str(root),*args],capture_output=True,timeout=60,check=False)
     epoch.need(result.returncode==0 and len(result.stdout)<=cap,'git_snapshot_unavailable')
@@ -347,11 +382,17 @@ def run(root,output,*,verify_run=None,artifact_directory=None):
             epoch.need(jobs==[],'queued_run_started')
             continue
         if row['id']==rid and verify_run is None:continue
+        if 'failed_prefix_transition' in policy and row['run_number']==1:
+            authenticate_failed_prefix(reader,policy,row,root=root)
+            epoch.need(row['id']!=rid,'failed_prefix_is_not_checkpoint')
+            continue
+        is_genesis=predecessor is None
         predecessor, receipt=authenticate_checkpoint(reader,policy,row,predecessor,root=root,expected_result=expected_result)
-        if row['run_number']==1:genesis_seal=receipt
+        if is_genesis:genesis_seal=receipt
     epoch.need(run_inventory(reader,policy)==rows,'producer_inventory_changed')
     validate_local_inputs(root,policy,record)
-    if current['run_number']>1:
+    first_checkpoint_number=2 if 'failed_prefix_transition' in policy else 1
+    if current['run_number']>first_checkpoint_number:
         committed_seal=epoch.parse(file_bytes(root,CONFIG+'genesis-seal.json'))
         epoch.need(genesis_seal is not None and committed_seal==genesis_seal,'committed_genesis_seal_required')
     if verify_run is not None:

@@ -1,6 +1,8 @@
 """Bounded public GitHub snapshot authentication, for trusted-process use only.
 
-No GitHub credentials, explicit environment reads, redirects, retries, provider access or mutation.
+No new credentials, redirects, retries, provider access or mutation. On the
+identity-bound own GitHub runner only, use its existing read-only GITHUB_TOKEN
+for fixed GitHub public metadata endpoints. Other processes remain anonymous.
 Standard library HTTPS transport may use the trusted runtime's configured proxy;
 proxy settings/credentials are never inspected, logged or persisted by this code.
 Production entrypoint never accepts a transport or a serialized 'trusted' flag.
@@ -13,6 +15,8 @@ from dataclasses import dataclass, field
 import hashlib
 import http.client
 import json
+import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -51,12 +55,24 @@ def _get(repository, suffix, deadline, cap):
     # repository and suffix originate only in read_snapshot's fixed construction.
     remaining = deadline - time.monotonic()
     p._require(remaining > 0, 'snapshot_deadline')
-    request = urllib.request.Request(API + repository + suffix, headers={
+    p._require(repository in (p.LEGACY[0],p.DESTINATION[0]) and
+               (suffix == '' or re.fullmatch(r'/git/commits/[0-9a-f]{40}',suffix) or
+                re.fullmatch(r'/git/trees/[0-9a-f]{40}\?recursive=1',suffix)), 'snapshot_endpoint_scope')
+    headers={
         'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'Jarvis-public-historical-snapshot/1'})
+        'User-Agent': 'Jarvis-public-historical-snapshot/1'}
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        p._require(os.environ.get('GITHUB_REPOSITORY') == p.DESTINATION[0] and
+                   os.environ.get('GITHUB_REPOSITORY_ID') == str(p.DESTINATION[1]) and
+                   os.environ.get('GITHUB_REPOSITORY_OWNER_ID') == str(p.DESTINATION[2]),'snapshot_runner_identity')
+        token=os.environ.get('GITHUB_TOKEN','')
+        p._require(token and token.isascii() and all(33 <= ord(c) <= 126 for c in token),'snapshot_runner_token')
+        headers['Authorization']='Bearer '+token
+    request = urllib.request.Request(API + repository + suffix, headers=headers)
     # Use ordinary platform HTTPS egress; never inspect proxy configuration.
-    # The trusted runtime owns this environment and TLS trust store. No GitHub
-    # Authorization header is added and redirects remain forbidden.
+    # The trusted runtime owns this environment and TLS trust store.
+    # Authorization is only the existing identity-bound runner token above;
+    # requests never leave api.github.com and redirects remain forbidden.
     opener = urllib.request.build_opener(_NoRedirect())
     try:
         with opener.open(request, timeout=min(20, remaining)) as response:
@@ -89,6 +105,13 @@ def _get(repository, suffix, deadline, cap):
                 p._require(total <= cap, 'snapshot_size')
             p._require(declared is None or total == int(declared), 'truncated_http_body')
             return _json(b''.join(chunks))
+    except p.ProvenanceError as error:
+        # Reviewed symbolic validation reasons contain no server text.
+        raise p.ProvenanceError(str(error)) from None
+    except urllib.error.HTTPError as error:
+        status = error.code if type(error.code) is int and 100 <= error.code <= 599 else 0
+        stage = 'repository' if suffix == '' else 'commit' if suffix.startswith('/git/commits/') else 'tree'
+        raise p.ProvenanceError(f'snapshot_{stage}_http_{status}') from None
     except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError):
         # Never include HTTP bodies, URLs or proxy credentials in error chains.
         raise p.ProvenanceError('snapshot_read_unavailable') from None
