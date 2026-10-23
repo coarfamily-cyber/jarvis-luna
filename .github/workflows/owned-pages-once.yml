@@ -42,8 +42,9 @@ jobs:
           socket.socket.connect = deny
           socket.socket.connect_ex = deny
           sys.path.insert(0, 'scripts')
-          for name in ('test_public_site', 'test_operations_public_projection', 'test_improvement_public_projection'):
-              result = unittest.TextTestRunner(verbosity=1).run(unittest.defaultTestLoader.loadTestsFromModule(__import__(name)))
+          # Explicit public-boundary suites exclude the legacy commerce load_tests hook.
+          for name in ('test_public_site.PublicSiteTests', 'test_operations_public_projection', 'test_improvement_public_projection'):
+              result = unittest.TextTestRunner(verbosity=1).run(unittest.defaultTestLoader.loadTestsFromName(name))
               if not result.wasSuccessful(): raise SystemExit(1)
           PY
       - name: Build only reviewed 34 public files and verify unchanged blocked status
@@ -56,6 +57,14 @@ jobs:
           active = sorted(p.name for p in Path('.github/workflows').rglob('*') if p.is_file() and p.suffix in {'.yml', '.yaml'})
           assert active == ['owned-pages-once.yml', 'owned-repo-smoke.yml'], active
           assert len(list(Path('.github/workflows-quarantined/20261023').glob('*.yml'))) == 30
+          # Preserve the legacy commerce safety assertions against the INACTIVE copy.
+          legacy = Path('.github/workflows-quarantined/20261023/daiso-daily-beauty-shopify.yml').read_text()
+          write_command = 'run: python scripts/daiso_daily_beauty_to_shopify.py'
+          assert legacy.index("('tests', 'test_daiso_daily_beauty_to_shopify.py')") < legacy.index(write_command)
+          assert legacy.index('loader.discover(folder, pattern=pattern, top_level_dir=folder)') < legacy.index(write_command)
+          assert 'if not result.wasSuccessful():' in legacy and 'raise SystemExit(1)' in legacy
+          assert 'path: |\n            out/daiso_daily_beauty_result.json\n            data/shopify_daily_registry.json' in legacy
+          assert 'quarantine_blocked_public:' in legacy
           manifest = json.loads(Path('dist/deployment.json').read_text())
           assert len(manifest['files']) == 34
           assert manifest['site_hash'] == 'e7a668df7081169f1562f51090f01379f9b287e3bf86cfefae3fda923a46d62a'
