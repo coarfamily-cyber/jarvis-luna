@@ -19,7 +19,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
     def test_actual_checkout(self):
         result=policy.verify(ROOT)
         self.assertEqual(result['active_schedules'], 0 if policy.STAGE == policy.MANUAL_STAGE else 1)
-        self.assertEqual(len(result['active_manual_workflows']), 3 if policy.STAGE == policy.MANUAL_STAGE else 2)
+        self.assertEqual(len(result['active_manual_workflows']), 4 if policy.STAGE == policy.MANUAL_STAGE else 3)
         self.assertEqual(result['archived_workflows'],30)
         self.assertFalse(result['production_recovered'])
     def test_exact_v3_active_set(self):
@@ -29,7 +29,18 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             '.github/workflows/owned-core-ledger-publisher.yml',
             '.github/workflows/owned-core-local.yml',
             '.github/workflows/owned-pages-once.yml',
-            '.github/workflows/owned-repo-smoke.yml'])
+            '.github/workflows/owned-repo-smoke.yml',
+            '.github/workflows/owned-shopify-readonly-preflight.yml'])
+    def test_preflight_write_scope_rejected(self):
+        path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
+        path.write_text(path.read_text().replace('contents: read', 'contents: write'))
+        with self.assertRaises(ValueError): policy.verify(self.root)
+
+    def test_preflight_schedule_rejected(self):
+        path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
+        path.write_text(path.read_text().replace('  workflow_dispatch:', "  schedule:\n    - cron: '* * * * *'\n  workflow_dispatch:"))
+        with self.assertRaises(ValueError): policy.verify(self.root)
+
     def test_new_core_bytes_mutation_rejected(self):
         path=self.root/'.github/workflows/owned-core-local.yml'
         path.write_bytes(path.read_bytes()+b'\n# changed\n')

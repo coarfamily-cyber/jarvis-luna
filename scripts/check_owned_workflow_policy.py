@@ -18,7 +18,8 @@ PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
                   HOURLY_STAGE: 'b1cacb160c3c80ebe21dda50a046b31e00810cd4'}
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
-EXPECTED = {'.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
+EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '01fa9650fa64b0e415d43ea628c8ba7792139023', 'mode': '100644'},
+ '.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
  '.github/workflows/owned-core-local.yml': {'blob': 'e710850a60881dc705bd7e8b1467a780dfa42df6', 'mode': '100644'},
  '.github/workflows-quarantined/20261023/JARVIS-Core-Automation.yml': {'blob': '88281a6d915ae2defe085c21ca6a1d1a5b090655',
                                                                        'mode': '100644'},
@@ -98,7 +99,7 @@ EXPECTED = {'.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b
                                                        'mode': '100644'},
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
- '.github/workflows/owned-pages-once.yml': {'blob': '7721425aa59ba7c355d2ebbd36fd669565867ab7',
+ '.github/workflows/owned-pages-once.yml': {'blob': '6c29c171a996a26ea2351b0736bd92db20e63c6d',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},
@@ -171,6 +172,13 @@ def verify(root):
                     if (doc.get('permissions') != {} or set(jobs) != {'publish'} or
                             jobs['publish'].get('permissions') != {'contents': 'write', 'actions': 'read'}):
                         raise ValueError('writer_job_only_permissions_required')
+                elif path.name == 'owned-shopify-readonly-preflight.yml':
+                    if (set(event or {}) != {'workflow_dispatch'} or
+                            doc.get('permissions') != {'contents': 'read'} or
+                            set(doc.get('jobs', {})) != {'preflight'} or
+                            doc['jobs']['preflight'].get('environment') != 'jarvis-shopify-writer'):
+                        raise ValueError('readonly_preflight_policy_required')
+                    manual_docs.append(rel)
                 else:
                     if not isinstance(event, dict) or set(event) != {'workflow_dispatch'}:
                         raise ValueError('manual_only_active_workflow_required')
