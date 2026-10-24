@@ -31,6 +31,14 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             '.github/workflows/owned-pages-once.yml',
             '.github/workflows/owned-repo-smoke.yml',
             '.github/workflows/owned-shopify-readonly-preflight.yml'])
+    def test_readonly_mode_default_and_no_write_choice(self):
+        path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
+        original=path.read_text()
+        for altered in (original.replace('default: connection','default: organist_dry_run'),
+                        original.replace('[connection, organist_dry_run]', '[connection, organist_dry_run, execute]')):
+            path.write_text(altered)
+            with self.assertRaises(ValueError): policy.verify(self.root)
+
     def test_preflight_write_scope_rejected(self):
         path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
         path.write_text(path.read_text().replace('contents: read', 'contents: write'))

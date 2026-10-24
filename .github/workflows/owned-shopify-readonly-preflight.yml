@@ -6,6 +6,12 @@ on:
         description: Exact reviewed main commit
         required: true
         type: string
+      mode:
+        description: Connection metadata only, or one fixed Organist read-only team task
+        required: true
+        default: connection
+        type: choice
+        options: [connection, organist_dry_run]
 permissions:
   contents: read
 concurrency:
@@ -13,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preflight:
-    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha && github.run_attempt == 1
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha && github.run_attempt == 1 && (inputs.mode == 'connection' || inputs.mode == 'organist_dry_run')
     environment: jarvis-shopify-writer
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -27,10 +33,30 @@ jobs:
         with:
           python-version: '3.11'
       - name: Offline preflight regression tests
-        run: python -B -m unittest discover -s scripts -p test_shopify_readonly_preflight.py -v
+        env:
+          PYTHONPATH: scripts
+        run: python -B -m unittest test_shopify_readonly_preflight test_team_repair_readonly -v
       - name: Read only shop, existing app identity and granted scope names
+        if: inputs.mode == 'connection'
         env:
           SHOPIFY_STORE: rb3zh1-i1.myshopify.com
           SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
           SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
         run: python -B scripts/shopify_readonly_preflight.py
+      - name: Read and recheck the one Organist team task without mutation
+        if: inputs.mode == 'organist_dry_run'
+        env:
+          SHOPIFY_STORE: rb3zh1-i1.myshopify.com
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+        run: python -B scripts/team_repair_readonly.py --root . --output "$RUNNER_TEMP/organist-readonly-attempt"
+      - name: Preserve only redacted attempt and outcome metadata
+        if: always() && inputs.mode == 'organist_dry_run'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: organist-readonly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/organist-readonly-attempt/attempt.json
+            ${{ runner.temp }}/organist-readonly-attempt/result.json
+          if-no-files-found: error
+          retention-days: 30

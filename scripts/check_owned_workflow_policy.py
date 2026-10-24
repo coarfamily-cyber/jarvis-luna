@@ -18,7 +18,7 @@ PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
                   HOURLY_STAGE: 'b1cacb160c3c80ebe21dda50a046b31e00810cd4'}
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
-EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '01fa9650fa64b0e415d43ea628c8ba7792139023', 'mode': '100644'},
+EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '59648a43afc603156f1193bb88dfcbe9dcf26871', 'mode': '100644'},
  '.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
  '.github/workflows/owned-core-local.yml': {'blob': 'e710850a60881dc705bd7e8b1467a780dfa42df6', 'mode': '100644'},
  '.github/workflows-quarantined/20261023/JARVIS-Core-Automation.yml': {'blob': '88281a6d915ae2defe085c21ca6a1d1a5b090655',
@@ -173,7 +173,12 @@ def verify(root):
                             jobs['publish'].get('permissions') != {'contents': 'write', 'actions': 'read'}):
                         raise ValueError('writer_job_only_permissions_required')
                 elif path.name == 'owned-shopify-readonly-preflight.yml':
-                    if (set(event or {}) != {'workflow_dispatch'} or
+                    expected_inputs = {
+                        'expected_sha': {'description': 'Exact reviewed main commit', 'required': True, 'type': 'string'},
+                        'mode': {'description': 'Connection metadata only, or one fixed Organist read-only team task',
+                                 'required': True, 'default': 'connection', 'type': 'choice',
+                                 'options': ['connection', 'organist_dry_run']}}
+                    if (event != {'workflow_dispatch': {'inputs': expected_inputs}} or
                             doc.get('permissions') != {'contents': 'read'} or
                             set(doc.get('jobs', {})) != {'preflight'} or
                             doc['jobs']['preflight'].get('environment') != 'jarvis-shopify-writer'):

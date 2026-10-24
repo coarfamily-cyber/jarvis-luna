@@ -21,6 +21,12 @@ class PreflightTests(unittest.TestCase):
         self.calls.append((op, kwargs))
         return json.dumps(self.responses[len(self.calls)-1]).encode()
 
+    def test_public_connection_api_does_not_return_session_token(self):
+        result = p.run(ENV, transport=self.request)
+        self.assertIsInstance(result, dict)
+        self.assertNotIn('token', result)
+        self.assertNotIn('dummy_token', json.dumps(result))
+
     def test_exact_operations_safe_receipt(self):
         result = p.run(ENV, transport=self.request)
         self.assertEqual([c[0] for c in self.calls], ['token', 'shop', 'identity', 'scopes'])

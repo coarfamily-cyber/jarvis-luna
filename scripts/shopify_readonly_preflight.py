@@ -76,15 +76,19 @@ def decode(raw):
 
 class FixedTransport:
     """One ordered attempt, TLS with public pinned IP, no redirects or retries."""
+    _operations = OPERATIONS
+    _bodies = {'identity': IDENTITY_BODY}
+    _stages = STAGES
+
     def __init__(self):
         self.next_operation = 0
 
     def __call__(self, operation, *, body=None, token=None):
-        order = ('token', 'shop', 'identity', 'scopes')
-        require(self.next_operation < 4 and operation == order[self.next_operation],
+        order = tuple(self._operations)
+        require(self.next_operation < len(order) and operation == order[self.next_operation],
                 'request_order_or_budget_invalid')
         self.next_operation += 1  # An uncertain request consumes its attempt.
-        method, path = OPERATIONS[operation]
+        method, path = self._operations[operation]
         require((operation == 'token' and isinstance(body, bytes) and token is None) or
                 (operation != 'token' and body is None and isinstance(token, str)),
                 'request_shape_invalid')
@@ -109,8 +113,8 @@ class FixedTransport:
                 headers['Content-Type'] = 'application/x-www-form-urlencoded'
             else:
                 headers['X-Shopify-Access-Token'] = token
-            if operation == 'identity':
-                body = IDENTITY_BODY
+            if operation in self._bodies:
+                body = self._bodies[operation]
                 headers['Content-Type'] = 'application/json'
             connection.request(method, path, body=body, headers=headers)
             response = connection.getresponse()
@@ -141,9 +145,9 @@ class FixedTransport:
                     'response_size_invalid')
             return raw
         except PreflightError as error:
-            raise PreflightError(getattr(error, 'code', None), STAGES[operation]) from None
+            raise PreflightError(getattr(error, 'code', None), self._stages[operation]) from None
         except Exception:
-            raise PreflightError('transport_failed_no_retry', STAGES[operation]) from None
+            raise PreflightError('transport_failed_no_retry', self._stages[operation]) from None
         finally:
             try:
                 if connection is not None:
@@ -154,7 +158,7 @@ class FixedTransport:
                 raise PreflightError('transport_cleanup_failed') from None
 
 
-def run(environ, *, transport=None):
+def _verified_session(environ, *, transport=None):
     require(environ.get('SHOPIFY_STORE') == HOST, 'store_configuration_mismatch')
     require(not environ.get('SHOPIFY_ADMIN_TOKEN'), 'mixed_credential_route_forbidden')
     client_id, secret = environ.get('SHOPIFY_CLIENT_ID'), environ.get('SHOPIFY_CLIENT_SECRET')
@@ -193,17 +197,24 @@ def run(environ, *, transport=None):
             'scope_response_invalid')
         scopes = {r['handle'] for r in rows}
         require(len(scopes) == len(rows) and REQUIRED <= scopes, 'required_scopes_missing_or_duplicate')
-        return {'schema_version': 1, 'status': 'readonly_connection_verified',
+        receipt = {'schema_version': 1, 'status': 'readonly_connection_verified',
                 'observed_at': datetime.now(timezone.utc).isoformat(), 'shop_id': SHOP_ID,
                 'transport_host': HOST, 'canonical_domain': CANONICAL_DOMAIN, 'api_version': API_VERSION,
                 'scope_names': sorted(scopes), 'excess_scope_names': sorted(scopes - REQUIRED),
                 'token_expiry_seconds': expiry, 'product_writes': 0,
                 'live_writer_authorized': False, 'app_identity_independently_verified': True,
                 'app_id': APP_ID, 'installation_id': INSTALLATION_ID}
+        return receipt, token
     except PreflightError as error:
         raise PreflightError(getattr(error, 'code', None), stage) from None
     except Exception:
         raise PreflightError('preflight_failed_redacted', stage) from None
+
+
+def run(environ, *, transport=None):
+    # Public preflight output remains credential-free and exactly the same schema.
+    receipt, _ = _verified_session(environ, transport=transport)
+    return receipt
 
 
 def main():
