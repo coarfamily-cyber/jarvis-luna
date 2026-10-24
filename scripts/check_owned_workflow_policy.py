@@ -9,7 +9,13 @@ import hashlib
 import json
 import yaml
 
-STAGE = 'owned-repository-durable-local-v3'
+MANUAL_STAGE = 'owned-repository-durable-manual-verification-v3'
+HOURLY_STAGE = 'owned-repository-durable-local-v3'
+# This source constant is reviewed per deployment; no CLI/environment override.
+STAGE = MANUAL_STAGE
+PRODUCER_PATH = '.github/workflows/owned-core-local.yml'
+PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
+                  HOURLY_STAGE: 'e710850a60881dc705bd7e8b1467a780dfa42df6'}
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
 EXPECTED = {'.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
@@ -107,6 +113,10 @@ EXPECTED = {'.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b
 
 
 def verify(root):
+    if STAGE not in PRODUCER_BLOBS:
+        raise ValueError('unknown_workflow_policy_stage')
+    expected = dict(EXPECTED)
+    expected[PRODUCER_PATH] = {'blob': PRODUCER_BLOBS[STAGE], 'mode': '100644'}
     root = Path(root)
     active = root / '.github/workflows'
     archived = root / '.github/workflows-quarantined/20261023'
@@ -136,11 +146,17 @@ def verify(root):
                 doc = yaml.safe_load(raw)
                 event = doc.get('on', doc.get(True)) if isinstance(doc, dict) else None
                 if path.name == 'owned-core-local.yml':
-                    if event != {'workflow_dispatch': None, 'schedule': [{'cron': '17 * * * *'}]}:
+                    producer_events = {'workflow_dispatch': None}
+                    if STAGE == HOURLY_STAGE:
+                        producer_events['schedule'] = [{'cron': '17 * * * *'}]
+                    if event != producer_events:
                         raise ValueError('exact_hourly_producer_events_required')
                     if doc.get('permissions') != {'contents': 'read', 'actions': 'read'}:
                         raise ValueError('producer_readonly_required')
-                    schedules += 1
+                    if STAGE == HOURLY_STAGE:
+                        schedules += 1
+                    else:
+                        manual_docs.append(rel)
                 elif path.name == 'owned-core-ledger-publisher.yml':
                     expected_events = {
                         'workflow_run': {'workflows': ['Owned Core local saved-input epoch'],
@@ -160,7 +176,7 @@ def verify(root):
                         raise ValueError('manual_only_active_workflow_required')
                     manual_docs.append(rel)
                 active_docs.append(rel)
-    if actual != EXPECTED:
+    if actual != expected:
         raise ValueError('workflow_inventory_changed')
     return {'stage': STAGE, 'scope': 'actual_checkout_quarantine_policy',
             'active_workflows': sorted(active_docs),

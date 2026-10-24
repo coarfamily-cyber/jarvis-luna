@@ -2,6 +2,7 @@
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 import check_owned_workflow_policy as policy
 
@@ -17,13 +18,13 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             shutil.copy2(ROOT/relative,dest)
     def test_actual_checkout(self):
         result=policy.verify(ROOT)
-        self.assertEqual(result['active_schedules'],1)
-        self.assertEqual(len(result['active_manual_workflows']),2)
+        self.assertEqual(result['active_schedules'], 0 if policy.STAGE == policy.MANUAL_STAGE else 1)
+        self.assertEqual(len(result['active_manual_workflows']), 3 if policy.STAGE == policy.MANUAL_STAGE else 2)
         self.assertEqual(result['archived_workflows'],30)
         self.assertFalse(result['production_recovered'])
     def test_exact_v3_active_set(self):
         result=policy.verify(ROOT)
-        self.assertEqual(result['stage'],'owned-repository-durable-local-v3')
+        self.assertEqual(result['stage'],policy.STAGE)
         self.assertEqual(result['active_workflows'],[
             '.github/workflows/owned-core-ledger-publisher.yml',
             '.github/workflows/owned-core-local.yml',
@@ -54,8 +55,33 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):policy.verify(self.root)
     def test_producer_faster_schedule_rejected(self):
         path=self.root/'.github/workflows/owned-core-local.yml'
-        path.write_text(path.read_text().replace('17 * * * *', '* * * * *'))
+        path.write_text(path.read_text().replace("  schedule:\n    - cron: '17 * * * *'\n", '').replace('  workflow_dispatch:', "  workflow_dispatch:\n  schedule:\n    - cron: '* * * * *'"))
         with self.assertRaises(ValueError):policy.verify(self.root)
+    def producer_profile(self, hourly):
+        path=self.root/'.github/workflows/owned-core-local.yml'
+        text=path.read_text().replace("  schedule:\n    - cron: '17 * * * *'\n", '')
+        if hourly:
+            text=text.replace('  workflow_dispatch:\n', "  workflow_dispatch:\n  schedule:\n    - cron: '17 * * * *'\n")
+        path.write_text(text)
+    def test_named_manual_profile(self):
+        self.producer_profile(False)
+        with patch.object(policy, 'STAGE', policy.MANUAL_STAGE):
+            self.assertEqual(policy.verify(self.root)['active_schedules'],0)
+    def test_named_hourly_profile(self):
+        self.producer_profile(True)
+        with patch.object(policy, 'STAGE', policy.HOURLY_STAGE):
+            self.assertEqual(policy.verify(self.root)['active_schedules'],1)
+    def test_manual_stage_rejects_hourly_bytes(self):
+        self.producer_profile(True)
+        with patch.object(policy, 'STAGE', policy.MANUAL_STAGE):
+            with self.assertRaises(ValueError):policy.verify(self.root)
+    def test_hourly_stage_rejects_manual_bytes(self):
+        self.producer_profile(False)
+        with patch.object(policy, 'STAGE', policy.HOURLY_STAGE):
+            with self.assertRaises(ValueError):policy.verify(self.root)
+    def test_unknown_profile_rejected(self):
+        with patch.object(policy, 'STAGE', 'unapproved'):
+            with self.assertRaises(ValueError):policy.verify(self.root)
     def test_unchanged_fixture(self):
         self.assertEqual(policy.verify(self.root)['stage'],policy.STAGE)
     def test_legacy_activation_rejected(self):

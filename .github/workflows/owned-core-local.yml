@@ -1,8 +1,6 @@
 name: Owned Core local saved-input epoch
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '17 * * * *'
 permissions:
   contents: read
   actions: read
