@@ -56,7 +56,7 @@ jobs:
           import hashlib, json
           from pathlib import Path
           active = sorted(p.name for p in Path('.github/workflows').rglob('*') if p.is_file() and p.suffix in {'.yml', '.yaml'})
-          assert active == ['owned-core-ledger-publisher.yml', 'owned-core-local.yml', 'owned-pages-once.yml', 'owned-repo-smoke.yml', 'owned-shopify-readonly-preflight.yml', 'owned-shopify-team-observation.yml'], active
+          assert active == ['owned-core-ledger-publisher.yml', 'owned-core-local.yml', 'owned-fx-readonly-observation.yml', 'owned-pages-once.yml', 'owned-repo-smoke.yml', 'owned-shopify-readonly-preflight.yml', 'owned-shopify-team-observation.yml'], active
           import sys
           sys.path.insert(0, 'scripts')
           from check_owned_workflow_policy import verify
