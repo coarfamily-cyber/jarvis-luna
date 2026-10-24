@@ -18,7 +18,7 @@ PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
                   HOURLY_STAGE: 'b1cacb160c3c80ebe21dda50a046b31e00810cd4'}
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
-EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '59648a43afc603156f1193bb88dfcbe9dcf26871', 'mode': '100644'},
+EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': 'af87277f0779c798626c8dac5c2cc08a7f4e9990', 'mode': '100644'},
  '.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
  '.github/workflows/owned-core-local.yml': {'blob': 'e710850a60881dc705bd7e8b1467a780dfa42df6', 'mode': '100644'},
  '.github/workflows-quarantined/20261023/JARVIS-Core-Automation.yml': {'blob': '88281a6d915ae2defe085c21ca6a1d1a5b090655',
@@ -175,13 +175,15 @@ def verify(root):
                 elif path.name == 'owned-shopify-readonly-preflight.yml':
                     expected_inputs = {
                         'expected_sha': {'description': 'Exact reviewed main commit', 'required': True, 'type': 'string'},
-                        'mode': {'description': 'Connection metadata only, or one fixed Organist read-only team task',
+                        'mode': {'description': 'Connection metadata, Organist read-only, or reviewed one-shot VT usage canary',
                                  'required': True, 'default': 'connection', 'type': 'choice',
-                                 'options': ['connection', 'organist_dry_run']}}
+                                 'options': ['connection', 'organist_dry_run', 'vt_usage_canary']}}
                     if (event != {'workflow_dispatch': {'inputs': expected_inputs}} or
                             doc.get('permissions') != {'contents': 'read'} or
-                            set(doc.get('jobs', {})) != {'preflight'} or
-                            doc['jobs']['preflight'].get('environment') != 'jarvis-shopify-writer'):
+                            set(doc.get('jobs', {})) != {'preflight', 'vt_usage_canary'} or
+                            doc['jobs']['preflight'].get('environment') != 'jarvis-shopify-writer' or
+                            doc['jobs']['vt_usage_canary'].get('environment') != 'jarvis-shopify-writer' or
+                            doc['jobs']['vt_usage_canary'].get('permissions') != {'contents': 'read', 'actions': 'read'}):
                         raise ValueError('readonly_preflight_policy_required')
                     manual_docs.append(rel)
                 else:

@@ -1,4 +1,4 @@
-name: Owned Shopify readonly connection preflight
+name: Owned Shopify connection and bounded canary
 on:
   workflow_dispatch:
     inputs:
@@ -7,11 +7,11 @@ on:
         required: true
         type: string
       mode:
-        description: Connection metadata only, or one fixed Organist read-only team task
+        description: Connection metadata, Organist read-only, or reviewed one-shot VT usage canary
         required: true
         default: connection
         type: choice
-        options: [connection, organist_dry_run]
+        options: [connection, organist_dry_run, vt_usage_canary]
 permissions:
   contents: read
 concurrency:
@@ -60,3 +60,67 @@ jobs:
             ${{ runner.temp }}/organist-readonly-attempt/result.json
           if-no-files-found: error
           retention-days: 30
+  vt_usage_canary:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha && github.run_attempt == 1 && github.run_number == 5 && inputs.mode == 'vt_usage_canary'
+    environment: jarvis-shopify-writer
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Install existing hash-pinned offline verification dependencies
+        run: python -m pip install --require-hashes -r requirements/requirements-verification.txt
+      - name: Offline fixed-target regression checks before credentials
+        env:
+          PYTHONPATH: scripts
+        run: python -B -m unittest test_vt_body_canary_policy test_vt_body_canary_runtime -v
+      - name: Prepare original hash-only one-shot intent
+        id: intent
+        env:
+          SHOPIFY_STORE: rb3zh1-i1.myshopify.com
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: python -B scripts/vt_body_canary_runtime.py prepare --root . --output "$RUNNER_TEMP/vt-usage-canary"
+      - name: Preserve original hash-only intent before any product mutation
+        id: checkpoint
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: vt-usage-intent-${{ steps.intent.outputs.operation_id }}-${{ github.run_id }}-1
+          path: |
+            ${{ runner.temp }}/vt-usage-canary/checkpoint/plan.json
+            ${{ runner.temp }}/vt-usage-canary/checkpoint/journal.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: false
+      - name: Verify original intent, freshly compare, apply once and read back
+        env:
+          SHOPIFY_STORE: rb3zh1-i1.myshopify.com
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CHECKPOINT_ID: ${{ steps.checkpoint.outputs.artifact-id }}
+          CHECKPOINT_DIGEST: ${{ steps.checkpoint.outputs.artifact-digest }}
+        run: python -B scripts/vt_body_canary_runtime.py apply --root . --output "$RUNNER_TEMP/vt-usage-canary"
+      - name: Preserve redacted outcome and consumed local intent
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: vt-usage-outcome-${{ github.run_id }}-1
+          path: |
+            ${{ runner.temp }}/vt-usage-canary/journal.json
+            ${{ runner.temp }}/vt-usage-canary/result.json
+          if-no-files-found: warn
+          retention-days: 30
+          overwrite: false
