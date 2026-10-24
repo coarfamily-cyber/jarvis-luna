@@ -52,7 +52,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
         path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
         original=path.read_text()
         for altered in (original.replace('  source_diagnostic:\n', '  source_diagnostic:\n    environment: jarvis-shopify-writer\n'),
-                        original.replace('github.run_number == 6', 'github.run_number == 5'),
+                        original.replace('github.run_number == 7', 'github.run_number == 5'),
                         original.replace('"$RUNNER_TEMP/vt-source-diagnostic"','"$RUNNER_TEMP/vt-usage-canary"')):
             path.write_text(altered)
             with self.assertRaises(ValueError):policy.verify(self.root)

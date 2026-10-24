@@ -57,6 +57,44 @@ class RuntimeTests(unittest.TestCase):
                 with self.assertRaises(r.gallery.Hold):
                     r.source_request(r.SOURCE_URL,hosts={'cdn.daisomall.co.kr'})
 
+    def test_header_never_overrides_exact_pinned_webp_hash_and_decoded_shape(self):
+        import io
+        from PIL import Image
+        image=Image.new('RGB',(850,9661),'white');stream=io.BytesIO();image.save(stream,format='WEBP')
+        raw=stream.getvalue()
+        with patch.object(p,'SOURCE',hashlib.sha256(raw).hexdigest()),patch.object(r,'SOURCE_LENGTH',len(raw)):
+            for mime in ('image/jpeg',' Image/JPEG ; charset=binary','application/octet-stream','image/jpg','text/html','binary/unknown',''):
+                with self.subTest(mime=mime):
+                    meta=r.validate_source_bytes({'content-type':mime},raw)
+                    self.assertTrue(meta['expected_source_hash_match']);self.assertTrue(meta['expected_format_magic'])
+        with self.assertRaises(r.gallery.Hold):
+            r.validate_source_bytes({'content-type':'application/octet-stream'},raw)
+
+    def test_same_size_html_or_wrong_shape_never_accepted(self):
+        import io
+        from PIL import Image
+        bad=b'<html>denied</html>'+b' '*(1064638-19)
+        with patch.object(p,'SOURCE',hashlib.sha256(bad).hexdigest()),self.assertRaises(r.gallery.Hold):
+            r.validate_source_bytes({'content-type':'application/octet-stream'},bad)
+        image=Image.new('RGB',(1,1),'white');stream=io.BytesIO();image.save(stream,format='WEBP')
+        raw=stream.getvalue()
+        with patch.object(p,'SOURCE',hashlib.sha256(raw).hexdigest()),patch.object(r,'SOURCE_LENGTH',len(raw)),self.assertRaises(r.gallery.Hold):
+            r.validate_source_bytes({'content-type':'image/jpeg'},raw)
+
+    def test_jpg_extension_or_jpeg_header_cannot_authorize_jpeg_bytes(self):
+        import io
+        from PIL import Image
+        image=Image.new('RGB',(850,9661),'white');stream=io.BytesIO();image.save(stream,format='JPEG')
+        raw=stream.getvalue()
+        with patch.object(p,'SOURCE',hashlib.sha256(raw).hexdigest()),patch.object(r,'SOURCE_LENGTH',len(raw)),self.assertRaises(r.gallery.Hold):
+            r.validate_source_bytes({'content-type':'image/jpeg'},raw)
+
+    def test_metadata_is_closed_and_contains_no_raw_header_or_body(self):
+        value=r.source_metadata({'content-type':'SECRET_TOKEN; x=private'},b'SECRET_TOKEN')
+        self.assertEqual(set(value),{'content_type_category','observed_bytes','expected_source_hash_match','expected_format_magic'})
+        self.assertNotIn('SECRET_TOKEN',json.dumps(value))
+        self.assertEqual(value['content_type_category'],'other')
+
     def test_source_transport_refusal_never_reads_body_or_follows_redirect(self):
         for status in (302,403,429):
             class Response:
@@ -79,7 +117,7 @@ class RuntimeTests(unittest.TestCase):
         import os
         env={'GITHUB_REPOSITORY':'coarfamily-cyber/jarvis-luna','GITHUB_REPOSITORY_ID':'1431541717',
              'GITHUB_REF':'refs/heads/main','GITHUB_EVENT_NAME':'workflow_dispatch','GITHUB_RUN_ATTEMPT':'1',
-             'GITHUB_RUN_NUMBER':'6','GITHUB_SHA':'a'*40,'EXPECTED_SHA':'a'*40}
+             'GITHUB_RUN_NUMBER':'7','GITHUB_SHA':'a'*40,'EXPECTED_SHA':'a'*40}
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ,env,clear=True), \
              patch.object(r,'SOURCE_DIAGNOSTIC_ENABLED',True), \
              patch.object(r,'SOURCE_DIAGNOSTIC_APPROVED_AT','2026-10-24T00:00:00+00:00'), \
@@ -92,8 +130,8 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(fetch.call_count,1)
             receipt=json.loads((Path(d)/'one/result.json').read_text())
             self.assertEqual(receipt['shopify_requests'],0)
-            with self.assertRaises(Exception):r.context(env)  # slot 6 never grants writer slot 5.
-            for key,value in (('GITHUB_RUN_ATTEMPT','2'),('GITHUB_RUN_NUMBER','7'),('SHOPIFY_CLIENT_SECRET','SECRET')):
+            with self.assertRaises(Exception):r.context(env)  # slot 7 never grants spent writer slot 5.
+            for key,value in (('GITHUB_RUN_ATTEMPT','2'),('GITHUB_RUN_NUMBER','8'),('SHOPIFY_CLIENT_SECRET','SECRET')):
                 with self.subTest(key=key),self.assertRaises(Exception):
                     r.source_diagnostic_context(dict(env,**{key:value}),datetime(2026,10,24,12,tzinfo=timezone.utc))
 

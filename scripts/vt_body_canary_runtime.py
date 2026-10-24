@@ -6,6 +6,7 @@ an independently reviewed fixed run slot, source policy and workflow integration
 """
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
 import re
 from pathlib import Path
@@ -16,6 +17,7 @@ import shopify_readonly_preflight as auth
 import team_repair_readonly as readonly
 import team_fix_protocol as protocol
 import vt_body_canary_policy as policy
+from PIL import Image
 
 WORKFLOW = '.github/workflows/owned-shopify-readonly-preflight.yml'
 PREFIX = 'vt-usage-intent-'
@@ -240,7 +242,43 @@ def source_request(url, *, hosts):
         connection.close()
 
 
-def fetch_source(root, output, *, request=source_request):
+SOURCE_LENGTH=1064638
+MIME_CATEGORIES={'image/webp':'webp','image/jpeg':'jpeg','image/jpg':'jpeg_alias',
+                 'application/octet-stream':'generic_binary','image/png':'png','text/html':'html'}
+
+
+def source_metadata(headers, raw):
+    header=headers.get('content-type') if isinstance(headers,dict) else None
+    mime=header.split(';')[0].strip().lower() if isinstance(header,str) and len(header)<=256 else ''
+    return {'content_type_category':MIME_CATEGORIES.get(mime,'missing' if not header else 'other'),
+            'observed_bytes':len(raw) if isinstance(raw,bytes) else 0,
+            'expected_source_hash_match':isinstance(raw,bytes) and policy.digest(raw)==policy.SOURCE,
+            'expected_format_magic':isinstance(raw,bytes) and len(raw)>=12 and raw[:4]==b'RIFF'
+                and raw[8:12]==b'WEBP' and int.from_bytes(raw[4:8],'little')==len(raw)-8}
+
+
+def validate_source_bytes(headers, raw):
+    meta=source_metadata(headers,raw)
+    # For THIS immutable image only, bytes are authoritative; MIME is reported
+    # but cannot authorize a different file. Exact SHA is checked before decode.
+    require(isinstance(raw,bytes) and len(raw)==SOURCE_LENGTH,'source_size_mismatch')
+    require(meta['expected_source_hash_match'],'source_hash_mismatch')
+    require(meta['expected_format_magic'],'source_magic_mismatch')
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            require(image.format=='WEBP' and image.mode=='RGB' and image.size==(850,9661) and getattr(image,'n_frames',1)==1,
+                    'source_decoded_image_mismatch')
+            image.verify()
+        with Image.open(io.BytesIO(raw)) as image:
+            image.load()
+    except gallery.Hold:
+        raise
+    except Exception:
+        raise gallery.Hold('source_decode_failed') from None
+    return meta
+
+
+def fetch_source(root, output, *, request=source_request, observation=None):
     source_guard(root)
     status,headers,raw=request(SOURCE_URL,hosts={'cdn.daisomall.co.kr'})
     require(type(status) is int,'source_http_status_invalid')
@@ -249,9 +287,9 @@ def fetch_source(root, output, *, request=source_request):
             'source_redirect_refused' if 300 <= status < 400 else
             'source_http_server_error' if 500 <= status < 600 else 'source_http_error')
         raise gallery.Hold(reason)
-    require(headers.get('content-type','').split(';')[0].lower()=='image/jpeg','source_content_type_mismatch')
-    require(isinstance(raw,bytes) and len(raw)==1064638,'source_size_mismatch')
-    require(policy.digest(raw)==policy.SOURCE,'source_hash_mismatch')
+    if observation is not None:
+        observation.update(source_metadata(headers,raw))
+    validate_source_bytes(headers,raw)
     # Ephemeral private runner file; explicitly excluded from every artifact.
     try:
         with (Path(output)/'source.bin').open('xb') as stream:
@@ -294,6 +332,7 @@ SAFE_FAILURES=frozenset({
     'source_http_rate_limited','source_redirect_refused','source_http_server_error','source_http_error',
     'source_content_type_mismatch','source_size_mismatch','source_hash_mismatch',
     'source_file_already_exists','source_file_write_failed',
+    'source_magic_mismatch','source_decoded_image_mismatch','source_decode_failed',
     'source_diagnostic_not_approved','source_diagnostic_grant_missing','source_diagnostic_window_invalid',
     'source_diagnostic_slot_invalid','source_diagnostic_shopify_credentials_forbidden',
     'source_provider_stop_active','provider_stop_state_missing','provider_stop_state_invalid',
@@ -326,7 +365,7 @@ def safe_failure(error, stage):
 
 
 SOURCE_DIAGNOSTIC_ENABLED=True
-SOURCE_DIAGNOSTIC_RUN_NUMBER=6
+SOURCE_DIAGNOSTIC_RUN_NUMBER=7
 SOURCE_DIAGNOSTIC_APPROVED_AT='2026-10-24T12:24:38+00:00'
 SOURCE_DIAGNOSTIC_EXPIRES_AT='2026-10-25T12:24:38+00:00'
 
@@ -356,12 +395,14 @@ def source_diagnostic(env, root, output):
     source_diagnostic_context(env,datetime.now(timezone.utc))
     output=Path(output)
     output.mkdir(mode=0o700,parents=False,exist_ok=False)
+    observation={}
     try:
-        fetch_source(root,output)
+        fetch_source(root,output,observation=observation)
         result={'state':'source_hash_verified','source_sha256':policy.SOURCE,'source_bytes':1064638,
                 'source_gets':1,'shopify_requests':0,'product_writes':0,'retry_allowed':False}
     except Exception as error:
         result={**safe_failure(error,'source_diagnostic'),'shopify_requests':0,'product_writes':0}
+    result.update(observation)
     gallery.atomic_json(output/'result.json',result)
     print(json.dumps(result))
     return 0 if result['state']=='source_hash_verified' else 1
