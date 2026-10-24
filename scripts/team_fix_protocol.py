@@ -27,18 +27,20 @@ AUTHORITY = {'publication_allowed': False, 'shopify_write_allowed': False,
 HEX = re.compile(r'[0-9a-f]{64}')
 
 
-def read_regular(path, limit):
+def read_regular(path, limit, *, consumed=None):
     descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
     with os.fdopen(descriptor, 'rb') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise ValueError('regular_file_required')
         raw = stream.read(limit + 1)
+    if consumed is not None:
+        consumed(len(raw))
     if len(raw) > limit:
         raise ValueError('evidence_capacity')
     return raw
 
 
-def checked_file(root, reference):
+def checked_bytes(root, reference, *, consumed=None):
     if not isinstance(reference, dict) or set(reference) != {'path', 'sha256'}:
         raise ValueError('invalid_reference')
     name, digest = reference['path'], reference['sha256']
@@ -52,10 +54,14 @@ def checked_file(root, reference):
         path = path / part
         if path.is_symlink():
             raise ValueError('symlink_evidence')
-    raw = read_regular(path, 1048576)
+    raw = read_regular(path, 1048576, consumed=consumed)
     if len(raw) > 1048576 or hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError('evidence_bytes_mismatch')
-    return digest
+    return raw
+
+
+def checked_file(root, reference):
+    return hashlib.sha256(checked_bytes(root, reference)).hexdigest()
 
 
 def project(root, records):
@@ -138,7 +144,7 @@ def discover(root):
     return [out[key] for key in sorted(out)]
 
 
-def load_projection(root):
+def _load_projection(root):
     path = Path(root) / 'data/team_fix_receipts.json'
     discovered = discover(root)
     if not path.exists():
@@ -161,3 +167,62 @@ def load_projection(root):
                 raise ValueError('receipt_discovered_rule_mismatch')
     present = {row.get('issue_id') for row in receipts if isinstance(row, dict) and isinstance(row.get('issue_id'), str)}
     return project(root, receipts + [row for row in discovered if row['issue_id'] not in present])
+
+
+MAX_OFFLINE_REPLAYS = 32
+MAX_OFFLINE_REPLAY_BYTES = 8 * 1024 * 1024
+
+
+def load_projection(root, *, offline_replays=None, now=None):
+    """Existing handoff plus explicitly requested saved-input rehearsals only.
+
+    Default callers are unchanged. Tasks/rules come from existing discovery and
+    receipts, never caller-supplied permissions. Optional results do not update
+    issue state, persisted receipts, runtime authority, or any external system.
+    """
+    doc = _load_projection(root)
+    if offline_replays is None:
+        return doc
+    if not isinstance(offline_replays, list) or len(offline_replays) > MAX_OFFLINE_REPLAYS:
+        raise ValueError('invalid_offline_replay_batch')
+    seen = set()
+    for request in offline_replays:
+        if not isinstance(request, dict) or set(request) != {'issue_id', 'before', 'readback'}:
+            raise ValueError('invalid_offline_replay_request')
+        issue = request['issue_id']
+        if not isinstance(issue, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,96}', issue) or issue in seen:
+            raise ValueError('invalid_or_duplicate_offline_issue')
+        seen.add(issue)
+    # Lazy import: consumer imports AUTHORITY; no cyclic import at module load.
+    from team_repair_rehearsal import RULE, blocked, rehearse
+    tasks = {row['issue_id']: row for row in doc['issues']}
+    results, total_bytes = [], 0
+    def consume(size):
+        nonlocal total_bytes
+        total_bytes += size
+        if total_bytes > MAX_OFFLINE_REPLAY_BYTES:
+            raise ValueError('offline_replay_aggregate_capacity')
+    for request in offline_replays:
+        issue = request['issue_id']
+        task = tasks.get(issue)
+        if task is None:
+            result = blocked('unknown_issue_requires_review')
+        elif task['rule'] != RULE or task['team'] != 'sourcing':
+            # Unsupported jobs do not dereference caller-controlled files.
+            result = blocked('unsupported_rule_requires_review')
+        elif task.get('reason') == 'receipt_cannot_grant_authority':
+            result = blocked('task_cannot_grant_authority')
+        else:
+            try:
+                # Validate and consume precisely these captured bytes; never
+                # hash one read then re-open a changed file for the consumer.
+                before = checked_bytes(root, request['before'], consumed=consume)
+                readback = checked_bytes(root, request['readback'], consumed=consume)
+            except (OSError, ValueError, TypeError) as exc:
+                if str(exc) == 'offline_replay_aggregate_capacity':
+                    raise
+                result = blocked('offline_evidence_unavailable_or_mismatched')
+            else:
+                result = rehearse(task, before, readback, now=now)
+        results.append({'issue_id': issue, **result})
+    return {**doc, 'offline_rehearsals': results}
