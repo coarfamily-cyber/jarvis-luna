@@ -16,9 +16,9 @@
   세 곳이 이미 그 자리를 읽고 있어서 옮기면 셋 다 고쳐야 한다.
 
 없는 값을 만들지 않는다
-  세 곳 다 실패하면 usd_to_krw 를 None 으로 두고 ok=False 와 오류를
-  남긴다. 예전 환율을 그대로 쓰지 않는다. 틀린 환율로 계산한 마진은
-  아예 없느니만 못하다.
+  세 곳 다 실패해도 검증 가능한 과거 관측은 원래 기준일·조회시각 그대로
+  보존한다. 실패한 이번 조회를 성공으로 표시하거나 오늘 기준일을 만들지 않는다.
+  유효하지만 오래된 관측과 잘못된 자료를 구분하며 신규 가격 산출은 신선도 검사를 한다.
 
   다만 파일의 다른 부분(last_run, totals)은 건드리지 않는다.
   이 스크립트는 fx 칸만 쓴다.
@@ -26,6 +26,10 @@
 from __future__ import annotations
 
 import json
+try:
+    from scripts import fx_provenance
+except ModuleNotFoundError:
+    import fx_provenance
 import re
 import sys
 import time
@@ -57,32 +61,34 @@ def as_date(raw) -> str:
     앞 10글자만 잘랐더니 'Mon, 07 Se' 가 저장됐다. 날짜가 아니라
     문자열이라 최신 판별도 우연히 맞았을 뿐이다.
     """
-    t = str(raw or "").strip()
-    if not t:
+    if not isinstance(raw, str):
         return ""
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", t)
-    if m:
-        return "-".join(m.groups())
-    m = re.search(r"(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})", t)
-    if m:
-        day, mon, year = m.groups()
-        mm = MONTHS.get(mon.lower())
-        if mm:
-            return f"{year}-{mm}-{int(day):02d}"
-    return ""
+    t = raw.strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", t):
+            return datetime.strptime(t, "%Y-%m-%d").date().isoformat()
+        if not re.fullmatch(r"[A-Za-z]{3}, \d{1,2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} (?:[+-]\d{4}|GMT|UTC)", t):
+            return ""
+        from email.utils import parsedate_to_datetime
+        parsed = parsedate_to_datetime(t)
+        if parsed.tzinfo is None:
+            return ""
+        return parsed.astimezone(timezone.utc).date().isoformat()
+    except (ValueError, TypeError, OverflowError):
+        return ""
 
 
 ENDPOINTS = [
     ("https://api.frankfurter.app/latest?from=USD&to=KRW",
-     lambda d: float(d["rates"]["KRW"]),
+     lambda d: d["rates"]["KRW"],
      lambda d: as_date(d.get("date")),
      "Frankfurter API"),
     ("https://open.er-api.com/v6/latest/USD",
-     lambda d: float(d["rates"]["KRW"]),
+     lambda d: d["rates"]["KRW"],
      lambda d: as_date(d.get("time_last_update_utc")) or as_date(d.get("date")),
      "ExchangeRate-API"),
     ("https://api.exchangerate-api.com/v4/latest/USD",
-     lambda d: float(d["rates"]["KRW"]),
+     lambda d: d["rates"]["KRW"],
      lambda d: as_date(d.get("date")),
      "exchangerate-api"),
 ]
@@ -107,10 +113,16 @@ def fetch_fx() -> dict:
             if status != 200:
                 raise RuntimeError(f"HTTP {status}")
             data = json.loads(body)
-            krw = round(float(rate_fn(data)), 2)
-            as_of = date_fn(data) or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            got.append({"usd_to_krw": krw, "as_of": as_of,
-                        "source": label, "api_url": url})
+            if not isinstance(data, dict) or (data.get('base') or data.get('base_code')) != 'USD':
+                raise ValueError('provider_base_currency_missing_or_not_usd')
+            krw = rate_fn(data)
+            as_of = date_fn(data)
+            observed = {"usd_to_krw": krw, "as_of": as_of, "source": label,
+                        "api_url": url, "fetched_at": now_iso(), "ok": True}
+            assessed = fx_provenance.assess_fx(observed)
+            if not assessed['valid']:
+                raise ValueError('invalid_provider_fx_metadata')
+            got.append(assessed['observation'])
             print(f"   {label}: 1 USD = {krw:,.2f} KRW (기준일 {as_of})")
         except (urllib.error.URLError, urllib.error.HTTPError, OSError,
                 ValueError, KeyError, TypeError, RuntimeError) as e:
@@ -133,7 +145,7 @@ def fetch_fx() -> dict:
             "as_of": best["as_of"],
             "source": best["source"],
             "api_url": best["api_url"],
-            "fetched_at": now_iso(),
+            "fetched_at": best["fetched_at"],
             "ok": True,
             "대조": others,
         }
@@ -161,20 +173,15 @@ def main() -> int:
 
     prev = doc.get("fx") or {}
 
-    # 기준일이 뒤로 가면 덮어쓰지 않는다. 이미 09-07 값이 있는데
-    # 09-04 값으로 바꾸면 그건 갱신이 아니라 후퇴다.
-    if (fx.get("ok") and prev.get("ok") and prev.get("as_of")
-            and str(fx.get("as_of") or "") < str(prev["as_of"])):
-        print(f"::warning::받은 값의 기준일({fx['as_of']})이 이미 있는 것"
-              f"({prev['as_of']})보다 오래됐다. 기존 값을 유지한다.")
-        keep = dict(prev)
-        keep["checked_at"] = fx["fetched_at"]
-        keep["보류"] = (f"{fx['source']} 가 {fx['as_of']} 기준 "
-                      f"{fx['usd_to_krw']:,.2f} 을 줬으나 더 오래되어 쓰지 않았다.")
-        doc["fx"] = keep
-        fx = keep
-    else:
-        doc["fx"] = fx
+    attempted = fx
+    selected = fx_provenance.select_fx(prev, attempted)
+    fx = selected['observation'] or attempted
+    fx = dict(fx)
+    fx['freshness_state'] = selected['state']
+    fx['selection'] = selected['selection']
+    fx['last_attempt_at'] = now_iso()
+    fx['last_attempt_ok'] = fx_provenance.assess_fx(attempted)['valid']
+    doc['fx'] = fx
 
     STATUS.parent.mkdir(parents=True, exist_ok=True)
     body = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
@@ -194,15 +201,15 @@ def main() -> int:
     # 다른 칸을 건드리지 않았는지 눈으로 확인할 수 있게 남긴다.
     keys = [k for k in doc if k != "fx"]
     print(f"   같은 파일의 다른 칸은 그대로: {', '.join(keys) or '없음'}")
-    if prev.get("usd_to_krw") and fx.get("usd_to_krw"):
+    if fx_provenance.assess_fx(prev)["valid"] and fx_provenance.assess_fx(fx)["valid"]:
         diff = fx["usd_to_krw"] - prev["usd_to_krw"]
         if abs(diff) >= 0.01:
             print(f"   직전 {prev['usd_to_krw']:,.2f} → {fx['usd_to_krw']:,.2f} "
                   f"({diff:+.2f})")
         else:
             print(f"   직전과 같음 ({fx['usd_to_krw']:,.2f})")
-    if not fx.get("ok"):
-        print(f"::error::환율을 세 곳 모두에서 못 받았다. {fx.get('error')}")
+    if not selected["fresh"] or not fx["last_attempt_ok"]:
+        print("::error::신선한 신규 환율 관측 미확인; 보관 관측은 갱신 성공이 아닙니다.")
         return 1
     return 0
 

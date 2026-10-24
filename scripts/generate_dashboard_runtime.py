@@ -10,10 +10,12 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 try:
+    from scripts import fx_provenance
     from scripts.operational_freshness import age_channels, assess_collection, assess_heartbeat
     from scripts.daiso_pipeline_inputs import load_pipeline_inputs
     from scripts.team_improvement_evidence import build as build_team_improvement_evidence
 except ModuleNotFoundError:
+    import fx_provenance
     from operational_freshness import age_channels, assess_collection, assess_heartbeat
     from daiso_pipeline_inputs import load_pipeline_inputs
     from team_improvement_evidence import build as build_team_improvement_evidence
@@ -30,6 +32,13 @@ HISTORY = KNOWLEDGE / "cumulative_history.json"
 
 # 한국 시간(KST)
 KST = timezone(timedelta(hours=9))
+
+
+def load_canonical_fx_card(root, now=None):
+    status = load_json(Path(root) / 'data/daiso_real/collection_status.json', {})
+    fx = status.get('fx') if isinstance(status, dict) else None
+    return fx_provenance.dashboard_fx(fx, now) or {
+        'rate': None, 'as_of': None, 'stale': True, 'state': 'invalid'}
 
 
 def load_json(path: Path, default: any) -> any:
@@ -1342,7 +1351,7 @@ def _main() -> None:
     # 후보 걸러내기도 이 값을 쓰므로 이미 붙어 있는 4건이 매번 승인 대기로
     # 다시 올라왔다. sync_channels.py 가 뒤에 채워주지만 카드는 그 전에
     # 계산이 끝나 있다.
-    prev_fx = prev.get("exchange_rate") if isinstance(prev, dict) else None
+    current_fx_card = load_canonical_fx_card(ROOT)
     prev_synced = prev.get("last_synced") if isinstance(prev, dict) else None
     shopify_strategy = load_json(ROOT / "data" / "shopify_marketing_strategy.json", {}) or {}
 
@@ -1461,8 +1470,7 @@ def _main() -> None:
         payload["global_channels"] = prev_global
     if isinstance(prev_gcs, dict) and prev_gcs:
         payload["global_channels_status"] = prev_gcs
-    if isinstance(prev_fx, dict) and prev_fx:
-        payload["exchange_rate"] = prev_fx
+    payload["exchange_rate"] = current_fx_card
     if prev_synced:
         payload["last_synced"] = prev_synced
 

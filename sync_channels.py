@@ -22,6 +22,8 @@
 from __future__ import annotations
 
 import json
+from scripts import fx_provenance
+from scripts.fetch_fx_rate import as_date
 import re
 import urllib.request
 from datetime import datetime, timezone, timedelta
@@ -635,7 +637,7 @@ def build_global_channels():
 
 
 def fetch_and_update_fx_status() -> dict:
-    """실시간 환율 조회. 실패하면 아무 값도 쓰지 않는다."""
+    """환율 조회와 보관 관측을 구분하고 기준일·실제 조회시각의 후퇴를 막는다."""
     status_path = DATA / "daiso_real" / "collection_status.json"
     endpoints = [
         "https://open.er-api.com/v6/latest/USD",
@@ -647,20 +649,12 @@ def fetch_and_update_fx_status() -> dict:
         try:
             with urllib.request.urlopen(url, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
-            krw = round(float(data["rates"]["KRW"]), 2)
-            # frankfurter 는 "2026-08-31", er-api 는 RFC1123
-            # ("Mon, 31 Aug 2026 00:00:01 +0000") 를 준다. 앞 10자만 자르면
-            # "Mon, 31 Au" 같은 깨진 값이 나오므로 형식을 구분해 파싱한다.
-            as_of = (data.get("date") or "").strip()
+            if not isinstance(data, dict) or (data.get('base') or data.get('base_code')) != 'USD':
+                raise ValueError('provider_base_currency_missing_or_not_usd')
+            krw = data["rates"]["KRW"]
+            as_of = as_date(data.get('date')) or as_date(data.get('time_last_update_utc'))
             if not as_of:
-                raw = (data.get("time_last_update_utc") or "").strip()
-                try:
-                    from email.utils import parsedate_to_datetime
-                    as_of = parsedate_to_datetime(raw).strftime("%Y-%m-%d")
-                except Exception:
-                    as_of = ""
-            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", as_of or ""):
-                as_of = datetime.now(KST).strftime("%Y-%m-%d")
+                raise ValueError('provider_source_date_missing_or_invalid')
             fx = {
                 "usd_to_krw": krw,
                 "krw_to_usd": round(1 / krw, 8),
@@ -669,15 +663,23 @@ def fetch_and_update_fx_status() -> dict:
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
                 "ok": True,
             }
+            if not fx_provenance.assess_fx(fx)['valid']:
+                fx = None
+                raise ValueError('invalid_provider_fx_metadata')
             print(f"[fx] {krw} KRW ({as_of}) from {url}")
             break
         except Exception as e:
             print(f"[fx] fail {url}: {e}")
-    if fx is None:
-        print("[fx] 모든 엔드포인트 실패 - 환율을 기록하지 않음")
-        return {}
     status = load_json(status_path, {}) or {}
-    status["fx"] = fx
+    selected = fx_provenance.select_fx(status.get('fx'), fx)
+    if selected['observation'] is None:
+        print('[fx] valid observation unavailable; no fabricated replacement')
+        return {}
+    attempt_ok = fx is not None
+    fx = dict(selected['observation'])
+    fx.update(freshness_state=selected['state'], selection=selected['selection'],
+              last_attempt_ok=attempt_ok, last_attempt_at=datetime.now(timezone.utc).isoformat())
+    status['fx'] = fx
     status_path.parent.mkdir(parents=True, exist_ok=True)
     status_path.write_text(
         json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -696,16 +698,8 @@ def sync_global_channels():
     }
 
     fx = fetch_and_update_fx_status()
-    if fx:
-        data["exchange_rate"] = {
-            "rate": fx["usd_to_krw"],
-            "as_of": fx["as_of"],
-            "source": fx["source"],
-            "updated_at": datetime.now(KST).strftime("%Y-%m-%d"),
-        }
-    elif "exchange_rate" in data:
-        # 조회 실패 시 이전 값을 유지하되 신선하지 않음을 표시
-        data["exchange_rate"]["stale"] = True
+    data['exchange_rate'] = fx_provenance.dashboard_fx(fx) or {
+        'rate': None, 'as_of': None, 'stale': True, 'state': 'invalid'}
 
     now = datetime.now(KST)
     data["last_synced"] = now.strftime("%m. %d. %p %I:%M KST") \

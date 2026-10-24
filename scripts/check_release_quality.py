@@ -5,6 +5,7 @@ from collections import Counter
 from datetime import datetime, timezone
 import hashlib
 import json
+import fx_provenance
 import math
 import os
 from pathlib import Path
@@ -141,23 +142,22 @@ def check(root=ROOT, *, phase='candidate', baseline=None, collector_report=None,
         pricing = documents['data/pricing_model.json']
         fx = pricing['exchange_rate']
         require(number(fx.get('usd_to_krw'), 500, 3000), 'FX outside policy range')
-        source_url = fx.get('api_url') or fx.get('source')
-        if not isinstance(source_url,str) or not source_url.startswith('https://'):
-            # The pricing writer retains a provider label, while its immutable
-            # input keeps the actual endpoint and successful observation time.
-            cached_fx = read(root/'data/daiso_real/collection_status.json').get('fx') or {}
-            endpoints = {'ExchangeRate-API':'https://open.er-api.com/v6/latest/USD',
-                         'Frankfurter API':'https://api.frankfurter.app/latest?from=USD&to=KRW',
-                         'exchangerate-api':'https://api.exchangerate-api.com/v4/latest/USD'}
-            observed = datetime.fromisoformat(str(cached_fx.get('fetched_at') or '').replace('Z','+00:00'))
-            require(observed.tzinfo is not None and -300 <= (clock-observed).total_seconds() <= policy.get('max_fx_age_days',4)*86400,
-                    'FX source observation stale/future/unaware')
-            require(cached_fx.get('ok') is True and cached_fx.get('api_url') == endpoints.get(fx.get('source'))
-                    and all(cached_fx.get(k) == fx.get(k) for k in ('usd_to_krw','as_of','source')), 'FX input/source provenance mismatch')
-            source_url = cached_fx.get('api_url')
-        require(isinstance(source_url, str) and source_url.startswith('https://'), 'FX source missing')
-        fx_day = datetime.fromisoformat(fx['as_of']).replace(tzinfo=timezone.utc)
-        require(-1 <= (clock - fx_day).total_seconds() / 86400 <= policy.get('max_fx_age_days', 4), 'FX stale/future')
+        cached_fx = read(root/'data/daiso_real/collection_status.json').get('fx') or {}
+        assessed_fx = fx_provenance.assess_fx(cached_fx, clock, policy.get('max_fx_age_days',4))
+        require(assessed_fx['valid'], 'FX source observation invalid')
+        require(assessed_fx['fresh'], 'FX source observation stale')
+        source_endpoint = (fx_provenance.ENDPOINTS.get(fx.get('source')) if isinstance(fx.get('source'), str) else None)
+        if source_endpoint is None and fx.get('source') in fx_provenance.ENDPOINTS.values():
+            source_endpoint = fx['source']
+        require(fx.get('api_url', source_endpoint) == source_endpoint, 'FX pricing endpoint/source mismatch')
+        require(all(cached_fx.get(k) == fx.get(k) for k in ('usd_to_krw','as_of')) and
+                source_endpoint == (assessed_fx['observation'] or {}).get('api_url'),
+                'FX input/source provenance mismatch')
+        dashboard = documents['data/dashboard_runtime.json'].get('exchange_rate') or {}
+        require(dashboard.get('rate') == fx.get('usd_to_krw') and dashboard.get('as_of') == fx.get('as_of') and
+                dashboard.get('api_url') == source_endpoint and dashboard.get('source') == cached_fx.get('source') and dashboard.get('fetched_at') == cached_fx.get('fetched_at') and
+                dashboard.get('stale') is False and dashboard.get('state') in {'fresh', 'cached'},
+                'FX dashboard/source mismatch or stale')
         offers = pricing['offers_by_product']
         for kind in ('single', 'bundle'):
             entries = offers.get(kind)

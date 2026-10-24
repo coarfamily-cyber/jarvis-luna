@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sys
 from datetime import datetime, timezone
@@ -590,8 +591,16 @@ def est_weight(name: str) -> tuple[int, str]:
     return total, f"{int(v)}{unit} x 1.6(용기) + {PACKAGING_G}g(포장) 추정"
 
 
+# User planning floor for one US outbound order, not per unit or a carrier quote.
+US_ORDER_SHIPPING_FLOOR_KRW = 9000
+
+
 def analyze(p: dict, rate: float, per_order: int, MARKET: dict,
             duty_mode: str = "ddu") -> dict:
+    if type(per_order) is not int or per_order <= 0:
+        raise ValueError('positive_integer_order_quantity_required')
+    if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
+        raise ValueError('valid_fx_rate_required')
     name = p.get("name") or ""
     krw = int(p.get("price_krw") or 0)
     serp = SERP.get(str(p.get("pd_no")))
@@ -614,7 +623,9 @@ def analyze(p: dict, rate: float, per_order: int, MARKET: dict,
     cost = krw / rate
     # 주문당 n개를 함께 보낸다고 가정하면 배송비가 n분의 1로 나뉜다
     order_g = grams * per_order
-    ship_total = ship_krw(order_g) / rate
+    weight_estimate_krw = ship_krw(order_g)
+    shipping_order_krw = max(weight_estimate_krw, US_ORDER_SHIPPING_FLOOR_KRW)
+    ship_total = shipping_order_krw / rate
     ship_unit = ship_total / per_order
 
     tariff = cost * TARIFF_RATE
@@ -648,6 +659,12 @@ def analyze(p: dict, rate: float, per_order: int, MARKET: dict,
         "unit_cost_usd": round(cost, 2),
         "shipping_unit_usd": round(ship_unit, 2),
         "shipping_order_usd": round(ship_total, 2),
+        "shipping_order_krw": shipping_order_krw,
+        "shipping_weight_estimate_krw": weight_estimate_krw,
+        "shipping_planning_floor_krw": US_ORDER_SHIPPING_FLOOR_KRW,
+        "shipping_floor_scope": "one_us_outbound_order_not_per_unit_or_customer_charge",
+        "shipping_quote_verified": False,
+        "full_profit_verified": False,
         "tariff_usd": round(tariff, 2),
         "duty_mode": duty_mode,
         "landed_cost_usd": round(landed, 2),
@@ -674,7 +691,9 @@ def main() -> int:
         return 1
     try:
         fx = (json.loads(STATUS.read_text(encoding="utf-8")) or {}).get("fx") or {}
-        rate = float(fx.get("usd_to_krw") or 0)
+        from fx_provenance import assess_fx
+        assessment = assess_fx(fx)
+        rate = assessment['observation']['usd_to_krw'] if assessment['fresh'] else 0
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         rate = 0
     if not rate:

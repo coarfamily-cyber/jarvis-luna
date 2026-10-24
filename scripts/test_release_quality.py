@@ -25,6 +25,12 @@ class QualityTests(unittest.TestCase):
             'data/pricing_model.json': {'exchange_rate':{'usd_to_krw':1300,'as_of':datetime.now(timezone.utc).date().isoformat(),'source':'https://example.invalid/fx'},'offers_by_product':{'single':[{'pd_no':'1','qty':1,'price_usd':10,'unit_price_usd':10,'landed_cost_total_usd':2,'fee_usd':1,'net_profit_usd':7,'margin_pct':70}],'bundle':[{'pd_no':'1','qty':2,'price_usd':20,'unit_price_usd':10,'landed_cost_total_usd':4,'fee_usd':2,'net_profit_usd':14,'margin_pct':70}]}},
             'data/dashboard_runtime.json': {'schema_version':1,'teams':[{'id':'sourcing','summary':'1개 상품'}]},
         }
+        fx = self.docs['data/pricing_model.json']['exchange_rate']
+        fx['source'] = 'ExchangeRate-API'
+        cached = dict(fx, ok=True, api_url='https://open.er-api.com/v6/latest/USD',
+                      fetched_at=datetime.now(timezone.utc).isoformat())
+        self.docs['data/daiso_real/collection_status.json'] = {'fx': cached}
+        self.docs['data/dashboard_runtime.json']['exchange_rate'] = q.fx_provenance.dashboard_fx(cached)
         self.save()
 
     def save(self):
@@ -40,6 +46,15 @@ class QualityTests(unittest.TestCase):
         for phase in ('candidate','final'):
             self.assertTrue(self.check(phase=phase)['publish_allowed'])
 
+    def test_dashboard_cannot_preserve_a_different_or_stale_fx(self):
+        for key,value in [('rate',1347.39),('as_of','2026-10-03'),('stale',True),('fetched_at','2099-01-01T00:00:00Z')]:
+            old=deepcopy(self.docs)
+            self.docs['data/dashboard_runtime.json']['exchange_rate'][key]=value
+            self.assertFalse(self.check()['publish_allowed'])
+            self.docs=old
+    def test_https_url_cannot_skip_canonical_fx_binding(self):
+        self.docs['data/pricing_model.json']['exchange_rate']['source']='https://example.invalid/fx'
+        self.assertFalse(self.check()['publish_allowed'])
     def test_missing_and_malformed_master_fail_closed(self):
         for raw in (None, '{bad'):
             p = self.root/'data/product_master.json'
@@ -75,6 +90,7 @@ class QualityTests(unittest.TestCase):
         cached=dict(fx,api_url='https://open.er-api.com/v6/latest/USD',ok=True,
                     fetched_at=datetime.now(timezone.utc).isoformat())
         self.docs['data/daiso_real/collection_status.json']={'fx':cached}
+        self.docs['data/dashboard_runtime.json']['exchange_rate']=q.fx_provenance.dashboard_fx(cached)
         self.assertTrue(self.check()['publish_allowed'])
         for key,value in [('usd_to_krw',999),('api_url','https://example.invalid/forged'),
                           ('ok',False),('fetched_at','2099-01-01T00:00:00+00:00')]:
