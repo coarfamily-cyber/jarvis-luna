@@ -12,7 +12,7 @@ import yaml
 MANUAL_STAGE = 'owned-repository-durable-manual-verification-v3'
 HOURLY_STAGE = 'owned-repository-durable-local-v3'
 # This source constant is reviewed per deployment; no CLI/environment override.
-STAGE = MANUAL_STAGE
+STAGE = HOURLY_STAGE
 PRODUCER_PATH = '.github/workflows/owned-core-local.yml'
 PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
                   HOURLY_STAGE: 'e710850a60881dc705bd7e8b1467a780dfa42df6'}
