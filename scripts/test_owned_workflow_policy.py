@@ -91,6 +91,24 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
     def test_manual_workflow_mutation_rejected(self):
         path=self.root/'.github/workflows/owned-pages-once.yml';path.write_bytes(path.read_bytes()+b'\n# changed\n')
         with self.assertRaises(ValueError):policy.verify(self.root)
+    def test_pages_root_write_permission_rejected(self):
+        path=self.root/'.github/workflows/owned-pages-once.yml'
+        original=path.read_text()
+        changed=original.replace('permissions: {}', 'permissions:\n  contents: write', 1)
+        self.assertNotEqual(original,changed)
+        path.write_text(changed)
+        with self.assertRaises(ValueError):policy.verify(self.root)
+    def test_pages_automatic_events_rejected(self):
+        path=self.root/'.github/workflows/owned-pages-once.yml'
+        original=path.read_text()
+        for event in ('  push:\n', "  schedule:\n    - cron: '* * * * *'\n"):
+            with self.subTest(event=event):
+                changed=original.replace('  workflow_dispatch:', event+'  workflow_dispatch:', 1)
+                self.assertNotEqual(original,changed)
+                path.write_text(changed)
+                with self.assertRaises(ValueError):policy.verify(self.root)
+        path.write_text(original)
+
     def test_deleted_archive_rejected(self):
         (self.root/'.github/workflows-quarantined/20261023/JARVIS-Core-Automation.yml').unlink()
         with self.assertRaises(ValueError):policy.verify(self.root)

@@ -135,6 +135,7 @@ SCHEMAS = {
 }
 UNSAFE = re.compile(r'(?i)(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16}|(?:authorization|api[_-]?key|password|access[_-]?token)\s*[:=]\s*\S+|[A-Z]:\\(?:Users|Windows)\\|/home/runner/|(?:localhost|127\.0\.0\.1):\d+)')
 SCHEMAS['data/dashboard_runtime.json']['continuity_review'] = CONTINUITY_REVIEW
+SCHEMAS['data/dashboard_runtime.json']['current_fx_observation'] = fields('usd_to_krw as_of fetched_at source api_url response_sha256 purpose')
 
 
 def restricted_public_summary(value):
@@ -287,6 +288,26 @@ def checked_source(root, relative):
     return p
 
 
+def public_fx_observation(root, now=None):
+    """Reviewed display evidence only; never update frozen pricing/runtime inputs."""
+    from fx_provenance import assess_fx
+    record = json.loads(checked_source(root, 'config/public-fx-observation.json').read_text())
+    if (set(record) != {'schema_version', 'purpose', 'fx', 'response_sha256'} or
+            type(record['schema_version']) is not int or record['schema_version'] != 1 or
+            record['purpose'] != 'public_observation_only_not_pricing_input' or
+            not isinstance(record['response_sha256'], str) or
+            not re.fullmatch('[0-9a-f]{64}', record['response_sha256'])):
+        raise ValueError('invalid_public_fx_record')
+    assessment = assess_fx(record['fx'], now=now)
+    if not assessment['valid']:
+        raise ValueError('invalid_public_fx_observation')
+    fx = assessment['observation']
+    # Age is calculated in the browser from the fixed source date. A later build
+    # cannot renew this observation or change its evidence timestamp.
+    return dict({k:fx[k] for k in ('usd_to_krw','as_of','fetched_at','source','api_url')},
+                response_sha256=record['response_sha256'], purpose=record['purpose'])
+
+
 def build(root, output, commit=None):
     root, output = Path(root).resolve(), Path(output).absolute()
     # Refuse destructive output paths. Only a separate child named dist is accepted.
@@ -299,6 +320,14 @@ def build(root, output, commit=None):
     for f,schema in SCHEMAS.items():
         source = json.loads(checked_source(root,f).read_text(encoding='utf-8'))
         if f == 'data/dashboard_runtime.json':
+            from fx_provenance import assess_fx
+            canonical = json.loads(checked_source(root, 'data/daiso_real/collection_status.json').read_text()).get('fx')
+            assessed = assess_fx(canonical)
+            if not assessed['valid']: raise ValueError('invalid_canonical_fx_projection')
+            fx = assessed['observation']
+            source = dict(source, current_fx_observation=public_fx_observation(root),
+                          exchange_rate={'rate':fx['usd_to_krw'], 'as_of':fx['as_of'],
+                                         'source':fx['source'], 'updated_at':fx['fetched_at']})
             # The canonical runtime remains byte-identical. Only the public copy
             # receives this independently validated display-only restriction.
             review_path = root / 'data/agents/continuity_review.json'

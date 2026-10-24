@@ -30,7 +30,7 @@ class DailyProjectionTests(unittest.TestCase):
             import shutil
             from build_public_site import STATIC_FILES
             root=Path(td)/'source';root.mkdir()
-            for f in (*STATIC_FILES,*SCHEMAS):
+            for f in (*STATIC_FILES,*SCHEMAS,'config/public-fx-observation.json'):
                 p=root/f;p.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/f,p)
             # Fixed historical rows reproduce the deployed bug without depending on future daily picks.
             snapshots=[

@@ -11,7 +11,11 @@ import unittest
 from unittest.mock import Mock,patch
 import fetch_fx_rate as fetch
 import pricing_model as pricing
-import generate_dashboard_runtime as dashboard
+# Bind the actual scripts/ entrypoint, not the unrelated legacy root namesake.
+import importlib.util
+_dashboard_spec = importlib.util.spec_from_file_location('fx_dashboard_under_test', Path(__file__).with_name('generate_dashboard_runtime.py'))
+dashboard = importlib.util.module_from_spec(_dashboard_spec)
+_dashboard_spec.loader.exec_module(dashboard)
 import sync_channels as sync
 
 NOW=datetime.now(timezone.utc)
@@ -103,6 +107,13 @@ class FxIntegrationTests(unittest.TestCase):
             with patch.object(sync,'DATA',root),patch.object(sync.urllib.request,'urlopen',return_value=response):result=sync.fetch_and_update_fx_status()
             self.assertEqual(result['as_of'],old['as_of']);self.assertEqual(result['fetched_at'],old['fetched_at'])
             self.assertEqual(result['usd_to_krw'],old['usd_to_krw'])
+    def test_dashboard_binding_ignores_repository_root_namesake(self):
+        root = Path(__file__).resolve().parents[1]
+        self.assertTrue((root/'generate_dashboard_runtime.py').is_file())
+        self.assertEqual(Path(dashboard.__file__).resolve(), root/'scripts/generate_dashboard_runtime.py')
+        self.assertNotEqual(Path(dashboard.__file__).resolve(), root/'generate_dashboard_runtime.py')
+        self.assertTrue(callable(dashboard.load_canonical_fx_card))
+
     def test_dashboard_reads_canonical_not_older_dashboard(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'data/daiso_real').mkdir(parents=True)

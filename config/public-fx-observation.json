@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "purpose": "public_observation_only_not_pricing_input",
+  "fx": {
+    "ok": true,
+    "usd_to_krw": 1324.702169,
+    "as_of": "2026-10-24",
+    "fetched_at": "2026-10-24T06:01:35.110287+00:00",
+    "source": "ExchangeRate-API",
+    "api_url": "https://open.er-api.com/v6/latest/USD"
+  },
+  "response_sha256": "385eec17851431c2e35110df249eec5a601de7dbbd3e4f64746419703972d733"
+}

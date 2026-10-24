@@ -141,6 +141,12 @@ class OperationsPublicProjectionTests(unittest.TestCase):
                 p = root / name
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(encoded({'operations': fixture()} if name == RUNTIME else {}))
+            # The build now requires valid display-only FX provenance; operations
+            # still owns no additional public file and does not change FX inputs.
+            for name in ('config/public-fx-observation.json', 'data/daiso_real/collection_status.json'):
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / name).read_bytes())
             with mock.patch('build_public_site.subprocess.check_output', side_effect=AssertionError('no git')):
                 manifest = build(root, Path(temp) / 'dist', 'a' * 40)
             self.assertEqual(len(manifest['files']), 34)

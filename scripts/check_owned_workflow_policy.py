@@ -98,7 +98,7 @@ EXPECTED = {'.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b
                                                        'mode': '100644'},
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
- '.github/workflows/owned-pages-once.yml': {'blob': 'f2615125312c0309d03b26d9547d4e2566a16c8e',
+ '.github/workflows/owned-pages-once.yml': {'blob': '7721425aa59ba7c355d2ebbd36fd669565867ab7',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},

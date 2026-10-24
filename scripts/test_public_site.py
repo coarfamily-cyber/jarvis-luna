@@ -15,13 +15,49 @@ class PublicSiteTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(dir=ROOT.parent, prefix='public-fixtures-')
         cls.root=Path(cls.tmp.name)/'source';cls.root.mkdir()
-        for name in (*STATIC_FILES,*SCHEMAS):
+        for name in (*STATIC_FILES,*SCHEMAS,'config/public-fx-observation.json'):
             target=cls.root/name;target.parent.mkdir(parents=True,exist_ok=True)
             target.write_bytes((ROOT/name).read_bytes())
         cls.output=Path(cls.tmp.name)/'dist'
     @classmethod
     def tearDownClass(cls): cls.tmp.cleanup()
     def setUp(self): self.manifest=build(self.root,self.output,'a'*40)
+
+    def test_public_fx_observation_does_not_modify_pricing_or_sources(self):
+        from build_public_site import public_fx_observation
+        before = {p.relative_to(self.root).as_posix():p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        build(self.root,self.output,'a'*40)
+        after = {p.relative_to(self.root).as_posix():p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        self.assertEqual(before,after)
+        public=json.loads((self.output/'data/dashboard_runtime.json').read_text())
+        self.assertEqual(public['current_fx_observation'], public_fx_observation(self.root))
+        canonical=json.loads((self.root/'data/daiso_real/collection_status.json').read_text())['fx']
+        self.assertEqual(public['exchange_rate']['rate'],canonical['usd_to_krw'])
+        self.assertEqual(public['exchange_rate']['as_of'],canonical['as_of'])
+        self.assertNotEqual(public['current_fx_observation']['usd_to_krw'],canonical['usd_to_krw'])
+
+    def test_public_fx_invalid_missing_unknown_source_fail_closed(self):
+        from build_public_site import public_fx_observation
+        p=self.root/'config/public-fx-observation.json'; original=p.read_bytes()
+        try:
+            for key,value in [('source','unknown'),('as_of',None),('usd_to_krw',True)]:
+                record=json.loads(original);record['fx'][key]=value;p.write_text(json.dumps(record))
+                with self.subTest(key=key), self.assertRaises(ValueError):public_fx_observation(self.root)
+            p.unlink()
+            with self.assertRaises(ValueError):public_fx_observation(self.root)
+        finally:p.write_bytes(original)
+
+    def test_public_fx_age_does_not_renew_evidence_timestamp(self):
+        from datetime import datetime,timezone
+        from build_public_site import public_fx_observation
+        old=public_fx_observation(self.root,now=datetime(2026,10,24,12,tzinfo=timezone.utc))
+        later=public_fx_observation(self.root,now=datetime(2026,11,24,12,tzinfo=timezone.utc))
+        self.assertEqual(old,later)
+        html=(self.root/'index.html').read_text()
+        self.assertIn('Date.now()-fxSourceTime',html)
+        self.assertIn('fxAgeDays>4',html)
+        self.assertIn('가격 계산에 적용된 환율',html)
+        self.assertIn('가격·배송료 미변경',html)
 
     def restricted_review(self):
         return {'mode':'restricted_gap','continuity':'unresolved_gap',

@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import build_listing_gate as gate  # noqa: E402
 import gate_signature  # noqa: E402
 import pricing_model as pm  # noqa: E402
+import fx_provenance  # noqa: E402
 import validate_commerce_architecture as architecture  # noqa: E402
 
 
@@ -125,7 +126,13 @@ class PricingModelPolicyTests(unittest.TestCase):
             product = {"pd_no": "1", "name": "테스트 세럼 50 ml", "bucket": "스킨케어", "shopify_score": 90, "price_krw": price_krw}
             write(tmp / "score.json", {"all_scored": [{**product, "grade": "S"}]})
             write(tmp / "srec.json", {"recommendations": [product]})
-            write(tmp / "status.json", {"fx": {"usd_to_krw": 1400.0, "as_of": "2026-10-11", "source": "test"}})
+            # Fixed, explicitly offline FX fixture with complete source metadata.
+            # Freeze only the FX assessment clock; never invent a current provider date.
+            fixture_fx = {"ok": True, "usd_to_krw": 1326.14, "as_of": "2026-10-22",
+                          "fetched_at": "2026-10-22T09:49:40.714798+00:00",
+                          "source": "ExchangeRate-API", "api_url": "https://open.er-api.com/v6/latest/USD"}
+            write(tmp / "status.json", {"fx": fixture_fx})
+            assess_fx = fx_provenance.assess_fx
             write(tmp / "oy.json", {"price_stats": {"n": 10, "min": 10.0, "p25": 12.0, "median": 15.0, "max": 30.0},
                                     "collected_at": iso(0)})
             out = tmp / "pricing.json"
@@ -133,6 +140,7 @@ class PricingModelPolicyTests(unittest.TestCase):
                  patch.object(pm, "STATUS", tmp / "status.json"), patch.object(pm, "OLIVEYOUNG", tmp / "oy.json"), \
                  patch.object(pm, "OUT", out), patch.object(pm, "MEASURED", {}), patch.object(pm, "GOSI_VOL", {}), \
                  patch.object(pm, "SERP", serp), patch.object(pm, "SERP_COLLECTED_AT", collected_at), \
+                 patch.object(fx_provenance, "assess_fx", side_effect=lambda fx: assess_fx(fx, now=datetime(2026,10,24,tzinfo=timezone.utc))), \
                  patch.object(pm, "ROOT", tmp), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(pm.main(), 0)
             return json.loads(out.read_text(encoding="utf-8"))

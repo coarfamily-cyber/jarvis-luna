@@ -1514,6 +1514,11 @@ function renderMarketTeam(mt){
   }
 
   const h=mt.health||{}, tm=mt.team||{}, tg=mt.target_market||{};
+  const observedFx=(window.__runtime&&window.__runtime.current_fx_observation)||{};
+  const fxSourceTime=Date.parse((observedFx.as_of||'')+'T00:00:00Z');
+  const fxAgeDays=Number.isFinite(fxSourceTime)?Math.floor((Date.now()-fxSourceTime)/86400000):null;
+  const fxAgeLabel=fxAgeDays===null||fxAgeDays<0?'기준일 확인 필요':(fxAgeDays>4?'오래된 관측 · ':'')+'기준일 후 '+fxAgeDays+'일';
+  const pricingFx=(window.__pricing&&window.__pricing.exchange_rate)||{};
   const band=tg.price_band_usd||{};
   note.innerHTML=esc(tm.scope||'')+
     ' · 갱신 '+esc((tm.updated_at||'').slice(0,16).replace('T',' '))+
@@ -1527,7 +1532,8 @@ function renderMarketTeam(mt){
       t('dz-blue','영문 카피 준비',(h.listing_ready_count||0)+'건','S목록 중 리스팅 가능')+
       t('dz-blue','최신 채널(갱신 정상)',(h.signals_live||0)+'/'+(h.signals_total||0),
         h.trust_graded?('검증 '+(h.signals_verified||0)+'개'):'신뢰 등급 미판정')+
-      t('dz-amber','적용 환율',h.exchange_rate?Number(h.exchange_rate).toLocaleString('ko-KR'):'–','KRW/USD')+
+      t('dz-amber','가격 계산에 적용된 환율',h.exchange_rate?Number(h.exchange_rate).toLocaleString('ko-KR'):'–','KRW/USD · 기준일 '+esc(pricingFx.as_of||'확인 필요'))+
+      t('dz-slate','별도 확인한 환율',observedFx.usd_to_krw?Number(observedFx.usd_to_krw).toLocaleString('ko-KR',{maximumFractionDigits:6}):'확인 필요','KRW/USD · 기준일 '+esc(observedFx.as_of||'확인 필요')+' · '+esc(fxAgeLabel)+' · 가격·배송료 미변경 · 수수료·최종이익 미확정')+
       t('dz-slate','최근 점수 산출',esc(h.last_score_run||'–'),'원가 모델 '+esc(h.last_pricing_run||'–'))+
     '</div>';
   }

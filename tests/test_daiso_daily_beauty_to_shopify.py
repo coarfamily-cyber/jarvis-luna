@@ -651,8 +651,10 @@ class DailySafetyTests(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
-    def test_workflow_tests_before_write_and_retains_registry_recovery(self):
-        workflow = (SCRIPT.parents[1]/".github/workflows/daiso-daily-beauty-shopify.yml").read_text(encoding="utf-8")
+    def test_archived_workflow_tests_before_write_and_retains_registry_recovery(self):
+        # Historical invariant only: the legacy commerce workflow must remain inactive.
+        self.assertFalse((SCRIPT.parents[1]/".github/workflows/daiso-daily-beauty-shopify.yml").exists())
+        workflow = (SCRIPT.parents[1]/".github/workflows-quarantined/20261023/daiso-daily-beauty-shopify.yml").read_text(encoding="utf-8")
         test_command = "('tests', 'test_daiso_daily_beauty_to_shopify.py')"
         write_command = "run: python scripts/daiso_daily_beauty_to_shopify.py"
         self.assertLess(workflow.index(test_command), workflow.index(write_command))

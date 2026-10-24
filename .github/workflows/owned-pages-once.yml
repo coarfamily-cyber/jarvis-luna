@@ -55,7 +55,13 @@ jobs:
           import hashlib, json
           from pathlib import Path
           active = sorted(p.name for p in Path('.github/workflows').rglob('*') if p.is_file() and p.suffix in {'.yml', '.yaml'})
-          assert active == ['owned-pages-once.yml', 'owned-repo-smoke.yml'], active
+          assert active == ['owned-core-ledger-publisher.yml', 'owned-core-local.yml', 'owned-pages-once.yml', 'owned-repo-smoke.yml'], active
+          import sys
+          sys.path.insert(0, 'scripts')
+          from check_owned_workflow_policy import verify
+          policy = verify(Path('.'))
+          assert policy['active_schedules'] == 1
+          assert policy['production_recovered'] is False
           assert len(list(Path('.github/workflows-quarantined/20261023').glob('*.yml'))) == 30
           # Preserve the legacy commerce safety assertions against the INACTIVE copy.
           legacy = Path('.github/workflows-quarantined/20261023/daiso-daily-beauty-shopify.yml').read_text()
@@ -67,7 +73,7 @@ jobs:
           assert 'quarantine_blocked_public:' in legacy
           manifest = json.loads(Path('dist/deployment.json').read_text())
           assert len(manifest['files']) == 34
-          assert manifest['site_hash'] == 'e7a668df7081169f1562f51090f01379f9b287e3bf86cfefae3fda923a46d62a'
+          assert manifest['site_hash'] == 'e84017ffd51e55d6c0a1cd1eee2cdd1a1bf4b76478ca2e444c212c3dad194176'
           assert set(p.relative_to('dist').as_posix() for p in Path('dist').rglob('*') if p.is_file()) == set(manifest['files']) | {'deployment.json'}
           assert not any(p.is_symlink() for p in Path('dist').rglob('*'))
           for name, expected in manifest['files'].items():
