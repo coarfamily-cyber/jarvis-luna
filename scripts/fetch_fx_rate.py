@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import json
 try:
-    from scripts import fx_provenance
-except ModuleNotFoundError:
     import fx_provenance
+except ModuleNotFoundError:
+    from scripts import fx_provenance
 import re
 import sys
 import time

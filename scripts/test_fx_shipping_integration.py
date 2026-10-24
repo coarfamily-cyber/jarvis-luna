@@ -1,6 +1,10 @@
 """Offline integration fixtures: no provider/Shopify calls or real data writes."""
 from datetime import datetime,timezone,timedelta
 import json
+import os
+import subprocess
+import shutil
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -42,6 +46,31 @@ class ShippingFloorTests(unittest.TestCase):
             with self.assertRaises(ValueError):pricing.analyze({},rate,1,{})
 
 class FxIntegrationTests(unittest.TestCase):
+    def test_import_from_unrelated_directory_with_shadow_namespace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp)/'scripts').mkdir()
+            env={**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parent)}
+            result=subprocess.run([sys.executable,'-B','-c','import fetch_fx_rate; assert fetch_fx_rate.as_date(None) == ""'],cwd=tmp,env=env,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr.decode())
+    def test_package_import_from_repo_root(self):
+        root=Path(__file__).resolve().parents[1]
+        env={**os.environ,'PYTHONPATH':str(root)}
+        result=subprocess.run([sys.executable,'-B','-c','import scripts.fetch_fx_rate'],cwd=root,env=env,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr.decode())
+    def test_actual_entrypoint_in_repo_and_foreign_cwd_uses_only_mocked_provider(self):
+        code = "import runpy,sys,json; from datetime import datetime,timezone; from unittest.mock import patch,MagicMock; response=MagicMock(); response.__enter__.return_value=response; response.status=200; response.read.return_value=json.dumps({'base':'USD','rates':{'KRW':1326.14},'date':datetime.now(timezone.utc).date().isoformat()}).encode(); context=patch('urllib.request.urlopen',return_value=response); context.start(); runpy.run_path(sys.argv[1],run_name='__main__')"
+        for foreign in (False,True):
+            with tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'repo';scripts=root/'scripts';scripts.mkdir(parents=True)
+                for name in ('fetch_fx_rate.py','fx_provenance.py'):
+                    shutil.copy2(Path(__file__).resolve().parent/name,scripts/name)
+                cwd=Path(tmp)/'foreign' if foreign else root
+                (cwd/'scripts').mkdir(parents=True,exist_ok=True)
+                env={**os.environ,'PYTHONPATH':str(scripts)}
+                result=subprocess.run([sys.executable,'-B','-c',code,str(scripts/'fetch_fx_rate.py')],cwd=cwd,env=env,capture_output=True)
+                self.assertEqual(result.returncode,0,result.stderr.decode())
+                saved=json.loads((root/'data/daiso_real/collection_status.json').read_text())['fx']
+                self.assertTrue(saved['ok']);self.assertEqual(saved['usd_to_krw'],1326.14)
     def test_provider_date_never_filled_with_today(self):
         data={'base':'USD','rates':{'KRW':1326.14}}
         with patch.object(fetch,'get',return_value=(200,json.dumps(data))):
