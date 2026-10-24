@@ -47,8 +47,9 @@ jobs:
               result = unittest.TextTestRunner(verbosity=1).run(unittest.defaultTestLoader.loadTestsFromName(name))
               if not result.wasSuccessful(): raise SystemExit(1)
           PY
-      - name: Build only reviewed 34 public files and verify unchanged blocked status
+      - name: Build only reviewed 36 public files and verify unchanged blocked status
         run: |
+          node scripts/test_owner_audit.cjs
           python -B scripts/build_public_site.py --output dist --commit "$GITHUB_SHA"
           python -B scripts/check_public_site.py --root dist
           python -B - <<'PY'
@@ -72,8 +73,8 @@ jobs:
           assert 'path: |\n            out/daiso_daily_beauty_result.json\n            data/shopify_daily_registry.json' in legacy
           assert 'quarantine_blocked_public:' in legacy
           manifest = json.loads(Path('dist/deployment.json').read_text())
-          assert len(manifest['files']) == 34
-          assert manifest['site_hash'] == 'e84017ffd51e55d6c0a1cd1eee2cdd1a1bf4b76478ca2e444c212c3dad194176'
+          assert len(manifest['files']) == 36
+          assert manifest['site_hash'] == 'e1d4066609c67adccd89d738234436d6d99e131f0a5a71e7ca0c145e631c5046'
           assert set(p.relative_to('dist').as_posix() for p in Path('dist').rglob('*') if p.is_file()) == set(manifest['files']) | {'deployment.json'}
           assert not any(p.is_symlink() for p in Path('dist').rglob('*'))
           for name, expected in manifest['files'].items():

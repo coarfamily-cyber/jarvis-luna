@@ -39,7 +39,9 @@ def validate(root):
         text=(root/f).read_text(encoding='utf-8'); data=json.loads(text)
         if project(data,schema)!=data: raise ValueError(f'non-public fields/values in {f}')
         if UNSAFE.search(text): raise ValueError(f'sensitive string in {f}')
-    html=(root/'index.html').read_text(encoding='utf-8')
+    html='\n'.join((root/f).read_text(encoding='utf-8') for f in STATIC_FILES if f.endswith('.html'))
+    for f in STATIC_FILES:
+        if f.endswith('.js') and UNSAFE.search((root/f).read_text(encoding='utf-8')): raise ValueError('sensitive string in public JavaScript')
     if UNSAFE.search(html): raise ValueError('sensitive string in public HTML')
     refs=re.findall(r'(?:src|href)=[\"\']([^\"\']+)[\"\']',html)
     refs+=re.findall(r'url\([\"\']?([^\"\')]+)',html)

@@ -125,7 +125,9 @@ class OperationsPublicProjectionTests(unittest.TestCase):
 
     def test_single_nested_runtime_payload_no_inventory_growth(self):
         # One explicitly bounded beauty-price projection is now public; operations still has only one payload.
-        self.assertEqual(len(STATIC_FILES) + len(SCHEMAS), 34)
+        self.assertEqual(len(STATIC_FILES) + len(SCHEMAS), 36)
+        self.assertEqual(set(STATIC_FILES) & {'audit.html', 'audit.js'}, {'audit.html', 'audit.js'})
+        self.assertEqual(len(set(STATIC_FILES) - {'audit.html', 'audit.js'}) + len(SCHEMAS), 34)
         self.assertEqual(set(SCHEMAS['data/shopify_public_observations.json']['items'][0]),
                          {'pd_no','status','media_count','online_store_visible','observed_at','source'})
         self.assertIn('data/beauty_price_strategy.json', SCHEMAS)
@@ -149,7 +151,8 @@ class OperationsPublicProjectionTests(unittest.TestCase):
                 target.write_bytes((ROOT / name).read_bytes())
             with mock.patch('build_public_site.subprocess.check_output', side_effect=AssertionError('no git')):
                 manifest = build(root, Path(temp) / 'dist', 'a' * 40)
-            self.assertEqual(len(manifest['files']), 34)
+            self.assertEqual(len(manifest['files']), 36)
+            self.assertEqual(set(manifest['files']) & {'audit.html', 'audit.js'}, {'audit.html', 'audit.js'})
             self.assertEqual(set(manifest['files']), set(STATIC_FILES) | set(SCHEMAS))
             public = json.loads((Path(temp) / 'dist' / RUNTIME).read_text(encoding='utf-8'))
             self.assertEqual(public['operations'], fixture())
