@@ -1,4 +1,6 @@
 """Actual-checkout quarantine assertions, separate from legacy fixture tests."""
+import ast
+import yaml
 import shutil
 import tempfile
 import unittest
@@ -19,7 +21,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
     def test_actual_checkout(self):
         result=policy.verify(ROOT)
         self.assertEqual(result['active_schedules'], 0 if policy.STAGE == policy.MANUAL_STAGE else 1)
-        self.assertEqual(len(result['active_manual_workflows']), 4 if policy.STAGE == policy.MANUAL_STAGE else 3)
+        self.assertEqual(len(result['active_manual_workflows']), 5 if policy.STAGE == policy.MANUAL_STAGE else 4)
         self.assertEqual(result['archived_workflows'],30)
         self.assertFalse(result['production_recovered'])
     def test_exact_v3_active_set(self):
@@ -30,7 +32,25 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             '.github/workflows/owned-core-local.yml',
             '.github/workflows/owned-pages-once.yml',
             '.github/workflows/owned-repo-smoke.yml',
-            '.github/workflows/owned-shopify-readonly-preflight.yml'])
+            '.github/workflows/owned-shopify-readonly-preflight.yml',
+            '.github/workflows/owned-shopify-team-observation.yml'])
+    def test_pages_exact_inventory_matches_policy(self):
+        # Keep Pages literal allowlist and exact fingerprint policy synchronized.
+        doc = yaml.safe_load((ROOT / '.github/workflows/owned-pages-once.yml').read_text())
+        step = next(s for s in doc['jobs']['public-build']['steps']
+                    if s.get('name', '').startswith('Build only reviewed'))
+        code = step['run'].split("python -B - <<'PY'\n", 1)[1].split('\nPY', 1)[0]
+        comparisons = [n for n in ast.walk(ast.parse(code)) if isinstance(n, ast.Compare)
+                       and isinstance(n.left, ast.Name) and n.left.id == 'active']
+        self.assertEqual(len(comparisons), 1)
+        check = comparisons[0]
+        self.assertEqual(len(check.ops), 1)
+        self.assertIsInstance(check.ops[0], ast.Eq)
+        exact = ast.literal_eval(check.comparators[0])
+        expected = sorted(Path(p).name for p in policy.EXPECTED
+                          if p.startswith('.github/workflows/') and p.endswith(('.yml', '.yaml')))
+        self.assertEqual(exact, expected)
+
     def test_connection_default_and_no_unreviewed_choice(self):
         path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
         original=path.read_text()

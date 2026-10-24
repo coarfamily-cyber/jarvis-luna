@@ -1,0 +1,50 @@
+name: Owned Shopify team observation
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed main commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: owned-shopify-team-observation
+  cancel-in-progress: false
+jobs:
+  observe:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha && github.run_attempt == 1
+    environment: jarvis-shopify-writer
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Offline observation and connection regression tests before credentials
+        env:
+          PYTHONPATH: scripts
+        run: python -B -m unittest test_shopify_team_observation test_shopify_readonly_preflight -v
+      - name: Read existing shop identity and observe catalog twice without writes
+        env:
+          SHOPIFY_STORE: rb3zh1-i1.myshopify.com
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: python -B scripts/shopify_team_observation.py --output "$RUNNER_TEMP/shopify-team-observation-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Preserve only bounded observation metadata
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: shopify-team-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/shopify-team-observation-${{ github.run_id }}-${{ github.run_attempt }}/attempt.json
+            ${{ runner.temp }}/shopify-team-observation-${{ github.run_id }}-${{ github.run_attempt }}/result.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: false
