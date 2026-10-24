@@ -1,4 +1,4 @@
-"""Exact owned-repository manual-local-v2 policy; no execution or mutation.
+"""Exact owned-repository durable-local-v3 policy; no execution or mutation.
 
 Legacy assertions use separate temporary fixture views, never this active view.
 Updating active workflow bytes requires an explicit reviewed policy version.
@@ -9,10 +9,11 @@ import hashlib
 import json
 import yaml
 
-STAGE = 'owned-repository-manual-local-v2'
+STAGE = 'owned-repository-durable-local-v3'
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
-EXPECTED = {'.github/workflows/owned-core-local.yml': {'blob': '28fe94a8b7e943172a071713e38c9e7f9979d7da', 'mode': '100644'},
+EXPECTED = {'.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
+ '.github/workflows/owned-core-local.yml': {'blob': 'e710850a60881dc705bd7e8b1467a780dfa42df6', 'mode': '100644'},
  '.github/workflows-quarantined/20261023/JARVIS-Core-Automation.yml': {'blob': '88281a6d915ae2defe085c21ca6a1d1a5b090655',
                                                                        'mode': '100644'},
  '.github/workflows-quarantined/20261023/JARVIS-Deep-Analysis.yml': {'blob': '55dbc1b99a4555329bac0ccc48264de3cfc616a5',
@@ -114,6 +115,8 @@ def verify(root):
             raise ValueError('workflow_directory_unsafe')
     actual = {}
     active_docs = []
+    manual_docs = []
+    schedules = 0
     for directory in (active, archived):
         for path in sorted(directory.rglob('*')):
             if path.is_symlink():
@@ -132,14 +135,37 @@ def verify(root):
             if directory == active and path.suffix in ('.yml', '.yaml'):
                 doc = yaml.safe_load(raw)
                 event = doc.get('on', doc.get(True)) if isinstance(doc, dict) else None
-                if not isinstance(event, dict) or set(event) != {'workflow_dispatch'}:
-                    raise ValueError('manual_only_active_workflow_required')
+                if path.name == 'owned-core-local.yml':
+                    if event != {'workflow_dispatch': None, 'schedule': [{'cron': '17 * * * *'}]}:
+                        raise ValueError('exact_hourly_producer_events_required')
+                    if doc.get('permissions') != {'contents': 'read', 'actions': 'read'}:
+                        raise ValueError('producer_readonly_required')
+                    schedules += 1
+                elif path.name == 'owned-core-ledger-publisher.yml':
+                    expected_events = {
+                        'workflow_run': {'workflows': ['Owned Core local saved-input epoch'],
+                                         'types': ['completed'], 'branches': ['main']},
+                        'workflow_dispatch': {'inputs': {'operation': {
+                            'description': 'Reviewed one-time initialization or bounded terminal recovery',
+                            'required': True, 'default': 'publish', 'type': 'choice',
+                            'options': ['publish', 'initialize']}}}}
+                    if event != expected_events:
+                        raise ValueError('exact_terminal_publisher_events_required')
+                    jobs = doc.get('jobs', {})
+                    if (doc.get('permissions') != {} or set(jobs) != {'publish'} or
+                            jobs['publish'].get('permissions') != {'contents': 'write', 'actions': 'read'}):
+                        raise ValueError('writer_job_only_permissions_required')
+                else:
+                    if not isinstance(event, dict) or set(event) != {'workflow_dispatch'}:
+                        raise ValueError('manual_only_active_workflow_required')
+                    manual_docs.append(rel)
                 active_docs.append(rel)
     if actual != EXPECTED:
         raise ValueError('workflow_inventory_changed')
     return {'stage': STAGE, 'scope': 'actual_checkout_quarantine_policy',
-            'active_manual_workflows': sorted(active_docs), 'archived_workflows': 30,
-            'active_schedules': 0, 'production_recovered': False}
+            'active_workflows': sorted(active_docs),
+            'active_manual_workflows': sorted(manual_docs), 'archived_workflows': 30,
+            'active_schedules': schedules, 'production_recovered': False}
 
 
 if __name__ == '__main__':

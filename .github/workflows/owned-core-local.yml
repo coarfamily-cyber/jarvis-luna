@@ -1,6 +1,8 @@
 name: Owned Core local saved-input epoch
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
 permissions:
   contents: read
   actions: read
@@ -27,8 +29,8 @@ jobs:
         run: |
           CODE="$RUNNER_TEMP/owned-core-code-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir "$CODE"
-          install -m 644 scripts/destination_core_epoch.py scripts/owned_core_local.py scripts/repository_provenance.py scripts/repository_snapshot_reader.py "$CODE/"
-          python -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import owned_core_local as m; sys.argv = [m.__file__, *sys.argv[2:]]; raise SystemExit(m.main())' "$CODE" --root "$GITHUB_WORKSPACE" --output "$RUNNER_TEMP/owned-core-local-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          install -m 644 scripts/destination_core_epoch.py scripts/owned_core_local.py scripts/repository_provenance.py scripts/repository_snapshot_reader.py scripts/durable_local_ledger.py scripts/durable_local_publisher.py scripts/durable_local_runtime.py "$CODE/"
+          python -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import durable_local_runtime as m; sys.argv = [m.__file__, *sys.argv[2:]]; raise SystemExit(m.main())' "$CODE" produce --root "$GITHUB_WORKSPACE" --output "$RUNNER_TEMP/owned-core-local-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Retain destination local checkpoint
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:

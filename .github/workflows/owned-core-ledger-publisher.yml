@@ -1,0 +1,44 @@
+name: Owned Core terminal ledger publisher
+on:
+  workflow_run:
+    workflows: [Owned Core local saved-input epoch]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Reviewed one-time initialization or bounded terminal recovery
+        required: true
+        default: publish
+        type: choice
+        options: [publish, initialize]
+permissions: {}
+concurrency:
+  group: owned-core-ledger-publisher
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Authenticate terminal producer and append bounded signed state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONDONTWRITEBYTECODE: '1'
+          DURABLE_OPERATION: ${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'publish' }}
+        run: |
+          CODE="$RUNNER_TEMP/owned-ledger-code-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$CODE"
+          install -m 644 scripts/destination_core_epoch.py scripts/owned_core_local.py scripts/repository_provenance.py scripts/repository_snapshot_reader.py scripts/durable_local_ledger.py scripts/durable_local_publisher.py scripts/durable_local_runtime.py "$CODE/"
+          python -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import durable_local_runtime as m; sys.argv = [m.__file__, *sys.argv[2:]]; raise SystemExit(m.main())' "$CODE" "$DURABLE_OPERATION" --root "$GITHUB_WORKSPACE"
