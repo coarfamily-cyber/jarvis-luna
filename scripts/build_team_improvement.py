@@ -214,6 +214,12 @@ def main() -> int:
         "teams": out_teams,
         "history": history,
     }
+    # Reusable issue -> evidence -> correction -> tests -> readback handoff.
+    # This projection never upgrades diagnostics to execution or approval.
+    from team_fix_protocol import load_projection
+    doc['repair_handoff'] = load_projection(ROOT)
+    for tid, team in out_teams.items():
+        team['repair_tasks'] = [issue for issue in doc['repair_handoff']['issues'] if issue['team'] == tid]
     body = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
     if len(body.encode('utf-8')) > 8 * 1024 * 1024:
         raise ValueError('team diagnostic history capacity reached; pruning forbidden')

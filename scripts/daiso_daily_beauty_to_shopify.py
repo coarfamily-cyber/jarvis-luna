@@ -65,6 +65,7 @@ UA = "JarvisLunaResearchBot/1.0 (+contact: coar0000@naver.com)"
 # 마진은 경고로만 공개, 이미지는 제품 전용으로 검수 기록이 있는 허용 목록. 파일이 없거나 안전 요건을 푸는 값이면 시작 단계에서 중단한다.
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+import supplier_notice_disclosures  # noqa: E402
 import manufacturer_safety  # noqa: E402
 import product_accuracy  # noqa: E402
 import gallery_review  # noqa: E402
@@ -698,7 +699,7 @@ def _collect_gosi(pd_no, allow_ai=True):
         items = json.loads((ROOT / "data/gosi.json").read_text(encoding="utf-8-sig")).get("items") or {}
         if isinstance(items, dict) and isinstance(items.get(str(pd_no)), dict):
             g.update({k: notice_value(k, _clean(v)) for k, v in items[str(pd_no)].items()
-                      if k in {'ingredients', 'volume', 'maker', 'origin', 'functional', 'expiry', 'usage', 'warnings'}
+                      if k in {'ingredients', 'volume', 'maker', 'origin', 'functional', 'expiry', 'usage', 'warnings', 'color', 'source_notice_text'}
                       and notice_value(k, _clean(v))})
             g["_source"] = "jarvis data/gosi.json"
     except (OSError, json.JSONDecodeError):
@@ -809,6 +810,8 @@ def _inci_resolver():
 
 
 def _net_contents(raw, name_kr=""):
+    if not isinstance(raw, str):
+        return ""
     raw = notice_value("volume", _clean(raw))
     # "2ml*6개입" 같은 세트는 개당 용량 x 개수로 쓰고 단위 환산은 하지 않는다 (총량으로 오해될 수 있다)
     sm = re.search(r"[*xX×]\s*(\d+)\s*(?:개입|개|ea|매|입)", name_kr or "")
@@ -831,7 +834,9 @@ def build_us_label(pd_no, name_kr, g):
     - 기능성/의약외품 성격(자외선차단·미백·주름개선 등): 자동 공개하지 않고 초안.
     - 제조국: 고정 매핑표만 사용. 매핑에 없으면 초안.
     """
-    reasons, label = [], {}
+    g = supplier_notice_disclosures.with_retained_supplier_text(ROOT, pd_no, g)
+    disclosure = supplier_notice_disclosures.inspect(pd_no, name_kr, g)
+    reasons, label = list(disclosure['reasons']), {}
     try:
         sg, resolver = _inci_resolver()
         source_ingredients = g.get('ingredients', '')
@@ -857,7 +862,7 @@ def build_us_label(pd_no, name_kr, g):
                 reasons.append(f"inci_review_required:{len(review)}")
             if delimited:
                 reasons.append("inci_delimited_output_review_required")
-            if has_inci and not missing and not review and not delimited:
+            if has_inci and not missing and not review and not delimited and not disclosure["formula_hold"]:
                 if str(pd_no) in {'1069429', '1069430'} and re.search(r'향료\([^)]*1\.21%\)', source_ingredients):
                     inci = re.sub(r'\bFragrance\b(?!\s*\()', 'Fragrance (1.21%)', inci, flags=re.I)
                 if str(pd_no) == '1060646' and '하이드롤라이즈드소듐하이알루로네이트(100 ppm)' in source_ingredients:
@@ -871,7 +876,7 @@ def build_us_label(pd_no, name_kr, g):
         reasons.append("inci_error")
 
     net_contents = _net_contents(g.get("volume"), name_kr)
-    if net_contents:
+    if net_contents and not disclosure["volume_hold"]:
         label["net_contents"] = net_contents
     else:
         reasons.append("net_contents_missing_or_invalid")
@@ -880,7 +885,7 @@ def build_us_label(pd_no, name_kr, g):
         label["origin"] = origin
     else:
         reasons.append("origin_unmapped")
-    mk = clean_maker(_clean(g.get("maker")))
+    mk = clean_maker(g.get("maker"))
     for ko, en in ROLE_EN:
         mk = mk.replace(ko, en)
     if re.search(r"[가-힣]{2,}", re.sub(r"\([^)]*\)|주식회사|\(주\)|㈜", "", mk)) or mk:
@@ -894,6 +899,7 @@ def build_us_label(pd_no, name_kr, g):
         w = _clean((labels.get(str(pd_no)) or {}).get("warnings_en"))
         if w and not re.search(r"실제|확인|TODO|TBD|placeholder|pending", w, re.I):
             label["warnings_en"] = w
+            reasons.append("legacy_warning_translation_requires_source_review")
     except (OSError, json.JSONDecodeError):
         pass
 
@@ -912,8 +918,9 @@ def build_us_label(pd_no, name_kr, g):
     if label.get("origin"):
         li.append(("Country of origin", label["origin"]))
     li.append(("Cautions and directions", label.get("warnings_en") or "Please refer to the product packaging."))
+    li.extend(disclosure["rows"])
     html = "<h4>Product information</h4><ul>" + "".join(f"<li><strong>{escape(k)}:</strong> {escape(str(v))}</li>" for k, v in li) + "</ul>"
-    return {"html": html, "reasons": reasons, "label": {k: v for k, v in label.items() if k != "ingredients_inci"}}
+    return {"html": html, "reasons": reasons, "supplier_disclosure": disclosure, "label": {k: v for k, v in label.items() if k != "ingredients_inci"}}
 
 
 

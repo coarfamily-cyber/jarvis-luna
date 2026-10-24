@@ -193,7 +193,7 @@ class InciLabelValidationTests(unittest.TestCase):
                      'Water, Fragrance | Parfum, 1,2-Hexanediol'):
             with self.subTest(inci=inci):
                 label = self.build(inci)
-                self.assertEqual(label['reasons'], ['inci_delimited_output_review_required'])
+                self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_delimited_output_review_required'])
                 self.assert_no_ingredient_list(label)
 
     def test_review_records_block_even_a_nonempty_inci_string(self):
@@ -204,13 +204,13 @@ class InciLabelValidationTests(unittest.TestCase):
             before = copy.deepcopy(record)
             with self.subTest(method=method):
                 label = self.build('Water, Fragrance', review=[record])
-                self.assertEqual(label['reasons'], ['inci_review_required:1'])
+                self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_review_required:1'])
                 self.assert_no_ingredient_list(label)
                 self.assertEqual(record, before)
 
     def test_partial_inci_with_missing_record_is_blocked(self):
         label = self.build('Water, Glycerin', missing=['unresolved source'])
-        self.assertEqual(label['reasons'], ['inci_unresolved:1'])
+        self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_unresolved:1'])
         self.assert_no_ingredient_list(label)
 
     def test_missing_and_review_reasons_are_both_retained(self):
@@ -218,14 +218,14 @@ class InciLabelValidationTests(unittest.TestCase):
         record = Resolution(term='unresolved source', method='ambiguous',
                             candidates=['Fragrance', 'Parfum']).as_record()
         label = self.build('', missing=['unresolved source'], review=[record])
-        self.assertEqual(label['reasons'], ['inci_unresolved:1', 'inci_review_required:1'])
+        self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_unresolved:1', 'inci_review_required:1'])
         self.assert_no_ingredient_list(label)
 
     def test_delimited_output_does_not_hide_missing_or_review_reasons(self):
         from inci_resolver import Resolution
         record = Resolution(term='unresolved source', method='unknown').as_record()
         label = self.build('Water, Fragrance|Parfum', missing=['unresolved source'], review=[record])
-        self.assertEqual(label['reasons'], ['inci_unresolved:1', 'inci_review_required:1',
+        self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_unresolved:1', 'inci_review_required:1',
                                            'inci_delimited_output_review_required'])
         self.assert_no_ingredient_list(label)
 
@@ -233,7 +233,7 @@ class InciLabelValidationTests(unittest.TestCase):
         for inci in ('', '  ', None, ['Water']):
             with self.subTest(inci=inci):
                 label = self.build(inci)
-                self.assertEqual(label['reasons'], ['inci_unresolved:0'])
+                self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_unresolved:0'])
                 self.assert_no_ingredient_list(label)
 
     def test_invalid_metadata_never_leaves_a_partial_ingredient_label(self):
@@ -250,7 +250,7 @@ class InciLabelValidationTests(unittest.TestCase):
                     sg.to_inci.return_value = tuple(result)
                     with patch.object(daily, '_inci_resolver', return_value=(sg, Mock())):
                         label = daily.build_us_label('1069430', 'Body Wash', source)
-                    self.assertEqual(label['reasons'], ['inci_result_metadata_invalid',
+                    self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_result_metadata_invalid',
                                                        'us_regulatory_review_functional_or_drug_like'])
                     self.assert_no_ingredient_list(label)
                     self.assertEqual(source, original)
@@ -261,7 +261,7 @@ class InciLabelValidationTests(unittest.TestCase):
         record = Resolution(term='source spelling', value='Fragrance',
                             method='spelling', matched='향료').as_record()
         label = self.build('Water, Fragrance, Glycerin, 1,2-Hexanediol', fixed=[record])
-        self.assertEqual(label['reasons'], [])
+        self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + [])
         self.assertIn('Water, Fragrance (1.21%), Glycerin, 1,2-Hexanediol', label['html'])
         self.assertEqual(label['label']['inci_fixed'], 1)
 
@@ -271,7 +271,7 @@ class InciLabelValidationTests(unittest.TestCase):
                       volume='40 mL', maker='Maker', origin='대한민국')
         before = copy.deepcopy(source)
         label = daily.build_us_label('single-list', 'Cream', source)
-        self.assertEqual(label['reasons'], [])
+        self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + [])
         self.assertIn('Water, Glycerin, 1,2-Hexanediol, Caprylic/Capric Triglyceride', label['html'])
         self.assertEqual(source, before)
 
@@ -280,7 +280,7 @@ class InciLabelValidationTests(unittest.TestCase):
         source = dict(ingredients='정제수|글리세린', volume='40 mL', maker='Maker', origin='대한민국')
         before = copy.deepcopy(source)
         label = daily.build_us_label('raw-pipe', 'Cream', source)
-        self.assertEqual(label['reasons'], ['inci_unresolved:1', 'inci_review_required:1'])
+        self.assertEqual(label['reasons'], ['usage_source_missing', 'warnings_source_missing'] + ['inci_unresolved:1', 'inci_review_required:1'])
         self.assert_no_ingredient_list(label)
         self.assertEqual(source, before)
 
@@ -304,8 +304,9 @@ class InciLabelValidationTests(unittest.TestCase):
                 self.assertIn('Fragrance|Perfume|Parfum', inci)
                 self.assertEqual((missing, review), ([], []))
                 label = daily.build_us_label(pd, '', source)
-                self.assertEqual(label['reasons'], ['inci_delimited_output_review_required',
-                                                   'us_regulatory_review_functional_or_drug_like'])
+                self.assertEqual(label['reasons'], ['usage_source_requires_label_review',
+                    'warnings_source_requires_label_review' if pd == '1069429' else 'warnings_source_missing',
+                    'inci_delimited_output_review_required', 'us_regulatory_review_functional_or_drug_like'])
                 self.assert_no_ingredient_list(label)
                 self.assertEqual(source, original)
                 gid, title = d.TITLE_SCOPE[pd]
@@ -332,7 +333,9 @@ class InciLabelValidationTests(unittest.TestCase):
                 shop.update_draft_content.assert_called_once_with(gid, before['descriptionHtml'], title)
                 self.assertEqual(product['descriptionHtml'], before['descriptionHtml'])
                 self.assertEqual(product['status'], 'DRAFT')
-                self.assertEqual(entry['draft_reasons'], holds[:-1] + ['inci_delimited_output_review_required'])
+                self.assertEqual(entry['draft_reasons'], holds[:-1] + ['usage_source_requires_label_review',
+                    'warnings_source_requires_label_review' if pd == '1069429' else 'warnings_source_missing',
+                    'inci_delimited_output_review_required'])
                 self.assertEqual(source, original)
                 for method in ('update_description', 'create', 'publish', 'set_status'):
                     getattr(shop, method).assert_not_called()

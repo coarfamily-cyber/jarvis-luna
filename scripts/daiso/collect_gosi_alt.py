@@ -137,15 +137,19 @@ _MAKER_ADDRESS = re.compile(
     r"(?:^|[\s,;/])(?:\((?:공장|본사|주소|소재지)\)\s*[:：]?|(?:공장|본사|주소|소재지)\s*[:：])"
 )
 _MAKER_ROLES = tuple(sorted(
-    next(names for field, names in LABELS if field == "maker") + ("책임판매원",),
+    next(names for field, names in LABELS if field == "maker") + ("책임판매원", "판매원", "판매업자"),
     key=len, reverse=True,
 ))
 
 
 def clean_maker(value: str) -> str:
     """Keep source company text; discard explicit addresses and role-only remnants."""
-    value = _MAKER_ADDRESS.split(str(value or ""), maxsplit=1)[0].strip()
+    if not isinstance(value, str):
+        return ""
+    value = _MAKER_ADDRESS.split(value, maxsplit=1)[0].strip()
     value = re.sub(r"\s+", " ", value)
+    # Drop only a standalone role-heading prefix, never a company-name prefix.
+    value = re.sub(r"^화장품\s+(?=(?:제조업자|책임판매업자|Manufacturer|Distributor)(?:\s|[:：]|$))", "", value)
     residue = value
     for role in _MAKER_ROLES:
         residue = residue.replace(role, "")
@@ -165,7 +169,8 @@ _NET_UNVERIFIED = re.compile(
     r"(?:제공|표기|확인|기재)\s*(?:되지|안\s*(?:됨|된|함))|"
     r"상세\s*페이지\s*참조|별도\s*표기|"
     r"\bnot\s*(?:available|verified|provided|confirmed|known|correct|applicable|specified|[0-9])|"
-    r"pending|unknown|estimated|unverified|unconfirmed|unspecified|uncertain|\bTB[CD]\b", re.I,
+    r"pending|unknown|estimated|unverified|unconfirmed|unspecified|uncertain|\bTB[CD]\b|"
+    r"\bwill\b|\bto\s+be\s+(?:confirmed|verified|provided)\b|예정|추후|나중에", re.I,
 )
 
 

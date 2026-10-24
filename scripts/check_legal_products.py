@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import html
 import re
 import unicodedata
 from datetime import datetime, timezone
@@ -82,12 +83,62 @@ def english_text(value: Any) -> bool:
                         and "LATIN" not in unicodedata.name(c, "") for c in value))
 
 
+# Conservative metadata screening, not authentication of a reviewer or document.
+# A future promise must not stand in for presently recorded approval evidence.
+_PROMISED_EVIDENCE = re.compile(
+    r"\b(?:will|shall)\s+(?:be|have|obtain|provide|confirm|review|submit|supply|verify|"
+    r"approve|prepare|collect|request|send|complete|upload|secure|get)\b|"
+    r"\b(?:plan(?:ned|ning)?|intend(?:ed|ing)?|promise(?:d)?|expect(?:ed)?|commit(?:ted)?)\s+to\b|"
+    r"\bto\s+be\s+(?:provided|supplied|submitted|obtained|reviewed|approved|verified|"
+    r"confirmed|prepared|completed|uploaded)\b|\b(?:not\s+yet|awaiting|forthcoming)\b|"
+    r"추후|향후|나중에|(?:제공|제출|확인|검토|확보|구비|입력|발급|첨부|등록|작성|수령|보완|승인)"
+    r"\s*(?:예정|계획|하기로|할\s*(?:예정|계획)|하겠)", re.I,
+)
+
+
+def evidence_text(value: Any) -> bool:
+    """Reject placeholders/promises without changing retained human text."""
+    if not isinstance(value, str):
+        return False
+    normalized = unicodedata.normalize("NFKC", html.unescape(value))
+    normalized = normalized.translate(dict.fromkeys(map(ord, "\u200b\u200c\u200d\ufeff")))
+    return real(normalized) and not _PROMISED_EVIDENCE.search(normalized)
+
+
+def review_date(value: Any, *, clock: datetime | None = None) -> bool:
+    """Validate a recorded nonfuture ISO date, not proof a review happened.
+
+    Legacy timezone-less ISO records retain their UTC interpretation. No date
+    is rewritten, and no implicit current timestamp is supplied for missing data.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        stamp = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc) if clock is None else clock
+        return now.tzinfo is not None and stamp <= now
+    except (ValueError, TypeError, OverflowError):
+        return False
+
+
 def human_evidence(evidence: Any, pd_no: str, allowed_sources: tuple[str, ...]) -> bool:
-    """A parser's verified/model/alt flags are not a product approval."""
+    """Check recorded metadata only; flags/promises cannot create evidence.
+
+    Reference existence, content binding and reviewer authority remain separate
+    controls. This helper neither authenticates files nor grants legal clearance.
+    """
     return (isinstance(evidence, dict) and evidence.get("human_approved") is True
             and str(evidence.get("product_id") or evidence.get("pd_no") or "") == pd_no
             and evidence.get("source_type") in allowed_sources
-            and all(real(evidence.get(f)) for f in ("evidence_ref", "reviewed_by", "reviewed_at")))
+            and all(evidence_text(evidence.get(f)) for f in ("evidence_ref", "reviewed_by"))
+            and review_date(evidence.get("reviewed_at")))
+
+
+def human_legal_approval(row: dict) -> bool:
+    return (row.get("status") == "pass" and evidence_text(row.get("reviewer"))
+            and review_date(row.get("reviewed_at")))
 
 
 def us_requirements(label: dict, pd_no: str) -> dict:
@@ -99,14 +150,15 @@ def us_requirements(label: dict, pd_no: str) -> dict:
     # Manufacturer is not RP; never infer RP/address from maker or collector flags.
     rp_ok = (isinstance(rp, dict) and english_text(rp.get("name"))
              and english_text(rp.get("address"))
+             and evidence_text(rp.get("name")) and evidence_text(rp.get("address"))
              and human_evidence(label.get("responsible_person_evidence"), pd_no,
                                 ("responsible_person_confirmation",)))
     evidence = label.get("product_safety_evidence")
     safety_ok = human_evidence(evidence, pd_no, ("manufacturer_product_safety",))
-    safety_ok = (safety_ok and real(evidence.get("manufacturer"))
+    safety_ok = (safety_ok and evidence_text(evidence.get("manufacturer"))
                  and as_text(evidence.get("manufacturer")).casefold() ==
                      as_text(label.get("manufacturer")).casefold()
-                 and real(evidence.get("product_specific_basis")))
+                 and evidence_text(evidence.get("product_specific_basis")))
     return {
         "label_fields": {"ok": not missing, "detail": "US English fields present" if not missing
                          else "Missing/placeholder/stale/non-English: " + ", ".join(missing)},
@@ -280,8 +332,7 @@ def main() -> int:
             },
             **requirements,
             "human_legal_approval": {
-                "ok": row.get("status") == "pass"
-                and all(real(row.get(f)) for f in ("reviewer", "reviewed_at")),
+                "ok": human_legal_approval(row),
                 "detail": "Human legal approval required; automation never creates PASS",
             },
         }
