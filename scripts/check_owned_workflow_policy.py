@@ -15,7 +15,7 @@ HOURLY_STAGE = 'owned-repository-durable-local-v3'
 STAGE = HOURLY_STAGE
 PRODUCER_PATH = '.github/workflows/owned-core-local.yml'
 PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
-                  HOURLY_STAGE: 'e710850a60881dc705bd7e8b1467a780dfa42df6'}
+                  HOURLY_STAGE: 'b1cacb160c3c80ebe21dda50a046b31e00810cd4'}
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
 EXPECTED = {'.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
@@ -148,7 +148,7 @@ def verify(root):
                 if path.name == 'owned-core-local.yml':
                     producer_events = {'workflow_dispatch': None}
                     if STAGE == HOURLY_STAGE:
-                        producer_events['schedule'] = [{'cron': '17 * * * *'}]
+                        producer_events['schedule'] = [{'cron': '17 */1 * * *'}]
                     if event != producer_events:
                         raise ValueError('exact_hourly_producer_events_required')
                     if doc.get('permissions') != {'contents': 'read', 'actions': 'read'}:

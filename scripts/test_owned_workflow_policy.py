@@ -55,13 +55,13 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):policy.verify(self.root)
     def test_producer_faster_schedule_rejected(self):
         path=self.root/'.github/workflows/owned-core-local.yml'
-        path.write_text(path.read_text().replace("  schedule:\n    - cron: '17 * * * *'\n", '').replace('  workflow_dispatch:', "  workflow_dispatch:\n  schedule:\n    - cron: '* * * * *'"))
+        path.write_text(path.read_text().replace("  schedule:\n    - cron: '17 */1 * * *'\n", '').replace('  workflow_dispatch:', "  workflow_dispatch:\n  schedule:\n    - cron: '* * * * *'"))
         with self.assertRaises(ValueError):policy.verify(self.root)
     def producer_profile(self, hourly):
         path=self.root/'.github/workflows/owned-core-local.yml'
-        text=path.read_text().replace("  schedule:\n    - cron: '17 * * * *'\n", '')
+        text=path.read_text().replace("  schedule:\n    - cron: '17 */1 * * *'\n", '')
         if hourly:
-            text=text.replace('  workflow_dispatch:\n', "  workflow_dispatch:\n  schedule:\n    - cron: '17 * * * *'\n")
+            text=text.replace('  workflow_dispatch:\n', "  workflow_dispatch:\n  schedule:\n    - cron: '17 */1 * * *'\n")
         path.write_text(text)
     def test_named_manual_profile(self):
         self.producer_profile(False)
