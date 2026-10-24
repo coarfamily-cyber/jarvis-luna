@@ -22,12 +22,20 @@ from PIL import Image
 WORKFLOW = '.github/workflows/owned-shopify-readonly-preflight.yml'
 PREFIX = 'vt-usage-intent-'
 QUERY = readonly.QUERY.replace('JarvisOrganistReadOnly', 'JarvisVTCanaryRead').replace(readonly.PRODUCT_ID, policy.PRODUCT)
+QUERY = QUERY.replace('publication { id name }', 'publication { id catalog { title } }')
+QUERY = QUERY.rsplit(' }\n}', 1)[0] + '''
+  unpublishedPublications(first:100) {
+   nodes { id catalog { title } }
+   pageInfo { hasNextPage endCursor }
+  }
+ }
+}'''
 QUERY_BODY = json.dumps({'query': QUERY}, separators=(',', ':')).encode()
 MUTATION = 'mutation JarvisVTUsageOnly($product:ProductUpdateInput!){productUpdate(product:$product){product{id} userErrors{field}}}'
 APPROVED_AT = '2026-10-24T12:08:51+00:00'
 EXPIRES_AT = '2026-10-25T12:08:51+00:00'
 WORKFLOW_ID = 395025557
-EXPECTED_RUN_NUMBER = 5
+EXPECTED_RUN_NUMBER = 8
 # Exact operational bundle approved 2026-10-24T12:08:51Z; one fixed run only.
 CANDIDATE_EXECUTION_ENABLED = True
 APPROVED_VISIBLE_PROJECTION = 'dc3dcdb66b3f26be462a4099933383b9f8bef40452f8304fc7e3686116bd856b'
@@ -52,13 +60,13 @@ def projection(raw):
     require(not data.get('errors') and isinstance(data.get('data'), dict), 'product_response_invalid')
     p = data['data'].get('product')
     required = {'id','title','handle','status','descriptionHtml','tags','updatedAt','vendor',
-                'publishedAt','totalInventory','options','variants','media','resourcePublications'}
+                'publishedAt','totalInventory','options','variants','media','resourcePublications','unpublishedPublications'}
     require(isinstance(p, dict) and set(p) == required, 'projection_incomplete')
     require(p['id'] == policy.PRODUCT and p['status'] == 'ACTIVE', 'target_status_changed')
     require(isinstance(p['descriptionHtml'], str) and isinstance(p['tags'], list)
             and all(isinstance(t,str) for t in p['tags']) and
             [t for t in p['tags'] if t.startswith('daiso-pd-')] == ['daiso-pd-1067498'], 'supplier_binding_changed')
-    for name in ('variants','media','resourcePublications'):
+    for name in ('variants','media','resourcePublications','unpublishedPublications'):
         c = p[name]
         require(isinstance(c,dict) and set(c) == {'nodes','pageInfo'} and isinstance(c['nodes'],list)
                 and isinstance(c['pageInfo'],dict) and set(c['pageInfo']) == {'hasNextPage','endCursor'}
@@ -72,12 +80,7 @@ def projection(raw):
                 and isinstance(v['price'],str) and isinstance(v['inventoryItem'],dict)
                 and set(v['inventoryItem'])=={'id','tracked'} and type(v['inventoryItem']['tracked']) is bool
                 and type(v['inventoryQuantity']) is int and isinstance(v['selectedOptions'],list), 'variant_incomplete')
-    pubs=p['resourcePublications']['nodes']
-    require(all(isinstance(v,dict) and set(v)=={'isPublished','publishDate','publication'}
-                and type(v['isPublished']) is bool and isinstance(v['publication'],dict)
-                and set(v['publication'])=={'id','name'} for v in pubs), 'publication_incomplete')
-    require(len(pubs)==7 and len({v['publication']['id'] for v in pubs})==7 and
-            [v['publication']['id'] for v in pubs if v['isPublished']] == [policy.PUBLICATION], 'publication_changed')
+    publication_union(p)
     for m in p['media']['nodes']:
         require(isinstance(m,dict) and {'id','alt','mediaContentType','status'} <= set(m), 'media_incomplete')
         if m['mediaContentType']=='IMAGE':
@@ -86,12 +89,36 @@ def projection(raw):
     return p
 
 
+def publication_union(p):
+    # Real saved API evidence: onlyPublished:false still returned one resource
+    # publication. Unpublished targets are a separate complete connection.
+    for key in ('resourcePublications','unpublishedPublications'):
+        c=p.get(key)
+        require(isinstance(c,dict) and set(c)=={'nodes','pageInfo'} and isinstance(c['nodes'],list)
+                and isinstance(c['pageInfo'],dict) and set(c['pageInfo'])=={'hasNextPage','endCursor'}
+                and c['pageInfo']['hasNextPage'] is False,'publication_projection_incomplete')
+    published=p['resourcePublications']['nodes'];unpublished=p['unpublishedPublications']['nodes']
+    require(len(published)==1 and isinstance(published[0],dict)
+            and set(published[0])=={'isPublished','publishDate','publication'}
+            and published[0]['isPublished'] is True,'published_connection_changed')
+    pub=published[0]['publication']
+    require(isinstance(pub,dict) and set(pub)=={'id','catalog'} and pub['id']==policy.PUBLICATION
+            and isinstance(pub['catalog'],dict) and set(pub['catalog'])=={'title'}
+            and isinstance(pub['catalog']['title'],str),'published_identity_changed')
+    require(len(unpublished)==6 and all(isinstance(n,dict) and set(n)=={'id','catalog'}
+                and isinstance(n['id'],str) and isinstance(n['catalog'],dict) and set(n['catalog'])=={'title'}
+                and isinstance(n['catalog']['title'],str) for n in unpublished),'unpublished_connection_changed')
+    require(len({n['id'] for n in unpublished})==6 and policy.PUBLICATION not in {n['id'] for n in unpublished},
+            'publication_overlap_or_duplicate')
+    return sorted([{'id':policy.PUBLICATION,'isPublished':True}]+
+                  [{'id':n['id'],'isPublished':False} for n in unpublished],key=lambda n:n['id'])
+
+
 def visible_projection(p):
     result={k:p[k] for k in ('id','title','vendor','status','tags','totalInventory')}
     result['variants']=[{k:v[k] for k in ('id','sku','price','inventoryQuantity')} for v in p['variants']['nodes']]
     result['images']=[{'id':m['id'],'alt':m['alt'],'url':m['image']['url']} for m in p['media']['nodes']]
-    result['publications']=sorted([{'id':n['publication']['id'],'isPublished':n['isPublished']}
-        for n in p['resourcePublications']['nodes']],key=lambda v:v['id'])
+    result['publications']=publication_union(p)
     return result
 
 
@@ -345,7 +372,9 @@ SAFE_FAILURES=frozenset({
     'regular_file_required','evidence_capacity','already_corrected_no_write','approved_visible_projection_changed',
     'projection_incomplete','projection_truncated','target_status_changed','supplier_binding_changed',
     'variants_changed','variant_incomplete','publication_incomplete','publication_changed','media_incomplete',
-    'image_incomplete','product_response_invalid','before_body_changed_requires_review','exact_after_body_mismatch'
+    'image_incomplete','product_response_invalid','before_body_changed_requires_review','exact_after_body_mismatch',
+    'publication_projection_incomplete','published_connection_changed','published_identity_changed',
+    'unpublished_connection_changed','publication_overlap_or_duplicate'
 })
 
 

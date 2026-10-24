@@ -61,7 +61,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   vt_usage_canary:
-    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha && github.run_attempt == 1 && github.run_number == 5 && inputs.mode == 'vt_usage_canary'
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha && github.run_attempt == 1 && github.run_number == 8 && inputs.mode == 'vt_usage_canary'
     environment: jarvis-shopify-writer
     runs-on: ubuntu-latest
     timeout-minutes: 8

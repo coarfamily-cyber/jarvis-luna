@@ -18,7 +18,7 @@ PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
                   HOURLY_STAGE: 'b1cacb160c3c80ebe21dda50a046b31e00810cd4'}
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
-EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '14766b7e4b31e96997989cd7c8c19611ad4762e1', 'mode': '100644'},
+EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '580e51d80f6f3214324fd83b0b00c601df2dbc60', 'mode': '100644'},
  '.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
  '.github/workflows/owned-core-local.yml': {'blob': 'e710850a60881dc705bd7e8b1467a780dfa42df6', 'mode': '100644'},
  '.github/workflows-quarantined/20261023/JARVIS-Core-Automation.yml': {'blob': '88281a6d915ae2defe085c21ca6a1d1a5b090655',

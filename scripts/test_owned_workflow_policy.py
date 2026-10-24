@@ -42,7 +42,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
     def test_canary_missing_slot_or_write_permissions_rejected(self):
         path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
         original=path.read_text()
-        for altered in (original.replace('github.run_number == 5 && ', ''),
+        for altered in (original.replace('github.run_number == 8 && ', ''),
                         original.replace('actions: read', 'actions: write'),
                         original.replace('overwrite: false', 'overwrite: true')):
             path.write_text(altered)

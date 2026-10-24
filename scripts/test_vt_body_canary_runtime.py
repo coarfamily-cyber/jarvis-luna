@@ -19,8 +19,10 @@ def sample():
             inventoryItem={'id':'inventory-'+k,'tracked':False},selectedOptions=[]) for k,v in p.VARIANTS.items()],
             'pageInfo':{'hasNextPage':False,'endCursor':None}},
         media={'nodes':[],'pageInfo':{'hasNextPage':False,'endCursor':None}},
-        resourcePublications={'nodes':[{'isPublished':i==0,'publishDate':None,'publication':{
-            'id':p.PUBLICATION if i==0 else 'gid://shopify/Publication/'+str(i),'name':'channel'}} for i in range(7)],
+        resourcePublications={'nodes':[{'isPublished':True,'publishDate':None,'publication':{
+            'id':p.PUBLICATION,'catalog':{'title':'channel'}}}],
+            'pageInfo':{'hasNextPage':False,'endCursor':None}},
+        unpublishedPublications={'nodes':[{'id':'gid://shopify/Publication/'+str(i),'catalog':{'title':'channel'}} for i in range(1,7)],
             'pageInfo':{'hasNextPage':False,'endCursor':None}})
 
 
@@ -159,10 +161,23 @@ class RuntimeTests(unittest.TestCase):
                         r.fetch_source(root,root,request=lambda *a,**k:(status,{},b'SECRET'))
                     self.assertEqual(r.safe_failure(found.exception,'source')['error'],code)
 
+    def test_publication_union_two_complete_connections_not_seven_resources(self):
+        saved=sample();result=r.publication_union(saved)
+        self.assertEqual(len(result),7)
+        self.assertEqual(sum(v['isPublished'] for v in result),1)
+        self.assertEqual(len(saved['resourcePublications']['nodes']),1)
+        for mutate in ('duplicate','overlap','missing','page'):
+            bad=deepcopy(saved)
+            if mutate=='duplicate':bad['unpublishedPublications']['nodes'][1]=bad['unpublishedPublications']['nodes'][0]
+            if mutate=='overlap':bad['unpublishedPublications']['nodes'][0]['id']=p.PUBLICATION
+            if mutate=='missing':bad['unpublishedPublications']['nodes'].pop()
+            if mutate=='page':bad['unpublishedPublications']['pageInfo']['hasNextPage']=True
+            with self.subTest(mutate=mutate),self.assertRaises(Exception):r.publication_union(bad)
+
     def test_projection_and_changes_rejected(self):
         s=sample()
         self.assertEqual(r.projection(json.dumps({'data':{'product':s}}).encode()),s)
-        for field in ('variants','media','resourcePublications'):
+        for field in ('variants','media','resourcePublications','unpublishedPublications'):
             bad=deepcopy(s);bad[field]['pageInfo']['hasNextPage']=True
             with self.subTest(field=field),self.assertRaises(Exception):
                 r.projection(json.dumps({'data':{'product':bad}}).encode())
@@ -269,7 +284,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_protected_projection_keeps_prices_and_publications(self):
         snap=sample();baseline=r.hashes(snap)
-        for key in ('variants','media','resourcePublications','tags','title','status'):
+        for key in ('variants','media','resourcePublications','unpublishedPublications','tags','title','status'):
             changed=deepcopy(snap);changed[key]=[] if key!='status' else 'DRAFT'
             with self.subTest(key=key):
                 try: actual=r.hashes(changed)
