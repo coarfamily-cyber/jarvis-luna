@@ -99,8 +99,8 @@ EXPECTED = {'.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '
                                                        'mode': '100644'},
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
- # Reviewed owner-audit Pages bytes v1; all execution policies remain unchanged.
- '.github/workflows/owned-pages-once.yml': {'blob': '06de65f6b4f249895f32c2205d3f7bc294c72c19',
+ # Reviewed owner-audit home-card Pages bytes v2; all execution policies remain unchanged.
+ '.github/workflows/owned-pages-once.yml': {'blob': 'b869838279349720c531be2b5f777b262af70e3e',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},

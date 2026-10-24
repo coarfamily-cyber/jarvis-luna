@@ -74,7 +74,7 @@ jobs:
           assert 'quarantine_blocked_public:' in legacy
           manifest = json.loads(Path('dist/deployment.json').read_text())
           assert len(manifest['files']) == 36
-          assert manifest['site_hash'] == 'e1d4066609c67adccd89d738234436d6d99e131f0a5a71e7ca0c145e631c5046'
+          assert manifest['site_hash'] == 'e60d5bd5d81e4c5e06d9928f903ab4a2e19782544c555603ae480694ec75878f'
           assert set(p.relative_to('dist').as_posix() for p in Path('dist').rglob('*') if p.is_file()) == set(manifest['files']) | {'deployment.json'}
           assert not any(p.is_symlink() for p in Path('dist').rglob('*'))
           for name, expected in manifest['files'].items():

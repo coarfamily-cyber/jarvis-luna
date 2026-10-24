@@ -33,3 +33,12 @@ for(const status of [403,429,404,500])await check(async()=>{global.fetch=async()
 await check(async()=>{global.fetch=async()=>{throw Error('network down')};await assert.rejects(observe,/network down/)});
 await check(async()=>{network((v,n)=>n===1?{workflow_runs:[]}:v);await assert.rejects(observe)});
 console.log(n+' model tests + '+count+' network tests passed');})();
+
+// Home integration must reuse the existing observer, styles and historical sections.
+const fs=require('node:fs'),path=require('node:path');
+const home=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+for(const id of ['owner-audit','owner-audit-title','status','refresh','results'])assert.equal((home.match(new RegExp('id="'+id+'"','g'))||[]).length,1);
+assert.equal((home.match(/<script src="audit\.js" defer><\/script>/g)||[]).length,1);
+assert.ok(home.includes('class="dashboard-card" id="owner-audit"')&&home.includes('class="btn btn-secondary" id="refresh"'));
+for(const id of ['daily-pipeline','teams','daiso','operations-system','knowledge-graph'])assert.ok(home.includes('id="'+id+'"'));
+console.log('4 home integration groups passed');

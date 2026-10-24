@@ -414,10 +414,22 @@ nav a{font-size:12px;}
 .dp-card.open .dp-detail{display:block;}
 .dp-detail div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;}.dp-detail span:first-child{color:#8b949e;white-space:nowrap;}
 .dp-detail span:last-child{text-align:right;}
+
+/* Owner audit uses existing dashboard card/button design; no global overrides. */
+#owner-audit{margin-bottom:32px;line-height:1.65;}
+#owner-audit h3{font-size:20px;margin-bottom:8px;}
+#owner-audit #status{font-size:16px;color:#d29922;margin:12px 0;}
+#owner-audit p{margin:8px 0;}
+#owner-audit a{color:#58a6ff;}
+#owner-audit .audit-warning{color:#d29922;}
+#owner-audit #results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 24px;}
+#owner-audit #results p{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.10);}
+#owner-audit button:disabled{opacity:.6;cursor:wait;}
+@media(max-width:700px){#owner-audit #results{grid-template-columns:1fr;}#owner-audit h3{font-size:18px;}}
 </style>
 </head>
 <body id="top">
-<aside aria-label="소유자 감사 안내" style="padding:16px;background:#162238;color:#fff"><strong>과거 자료와 현재 실행을 구분해 확인하세요.</strong> <a style="color:#91d4ff" href="audit.html">최신 실행·원장 감사 열기</a> · 아래 대시보드는 보존된 시점별 자료이며 현재 Shopify·매출 상태가 아닙니다.</aside>
+<aside aria-label="소유자 감사 안내" style="padding:16px;background:#162238;color:#fff"><strong>과거 자료와 현재 실행을 구분해 확인하세요.</strong> <a style="color:#91d4ff" href="#owner-audit">최신 실행·원장 감사 열기</a> · 아래 대시보드는 보존된 시점별 자료이며 현재 Shopify·매출 상태가 아닙니다.</aside>
 <header>
 <a class="logo" href="#top" style="text-decoration:none;">MD family</a>
 <nav>
@@ -439,6 +451,16 @@ nav a{font-size:12px;}
 </section>
 
 <div class="container">
+<!-- Owner audit: current read-only evidence, separate from historical dashboard -->
+<section class="dashboard-card" id="owner-audit" aria-labelledby="owner-audit-title">
+<h3 id="owner-audit-title">현재 실행 · 원장 감사</h3>
+<p>운영 정본: coarfamily-cyber/jarvis-luna · 공개 근거 읽기 전용</p>
+<p class="audit-warning">생산 실행, 원장 게시, 실제 판매 자동화는 별개입니다. 아래 보존 대시보드 수치는 현재 Shopify·실매출이 아닙니다.</p>
+<div aria-live="polite"><h4 id="status">현재 상태 미확인</h4><button class="btn btn-secondary" id="refresh" type="button">최신 근거 다시 조회</button><div id="results"></div></div>
+<noscript>JavaScript가 꺼져 있어 현재 상태를 조회하지 않았습니다. 직접 근거 링크를 확인하세요.</noscript>
+<p><a href="https://github.com/coarfamily-cyber/jarvis-luna/actions/workflows/owned-core-local.yml">생산 실행 근거</a> · <a href="https://github.com/coarfamily-cyber/jarvis-luna/actions/workflows/owned-core-ledger-publisher.yml">원장 게시 근거</a> · <a href="https://github.com/coarfamily-cyber/jarvis-luna/tree/jarvis-owned-state">실제 원장</a> · <a href="audit.html">별도 감사 화면</a></p>
+<p>조회 실패·호출 한도는 미확인으로 표시합니다. 로그인 토큰·판매 쓰기·재실행 권한을 사용하지 않습니다.</p>
+</section>
 <!-- Hero -->
 <div class="hero">
 <div class="hero-text">
@@ -2349,6 +2371,7 @@ setInterval(renderDailyPipeline,300000);
   });
 })();
 </script>
+<script src="audit.js" defer></script>
 </body>
 </html>
 
