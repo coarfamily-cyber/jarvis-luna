@@ -6,6 +6,7 @@ Transport deliberately ignores proxy settings on the hosted GitHub runner.
 import http.client
 import ipaddress
 import json
+import math
 import os
 import re
 import signal
@@ -32,9 +33,18 @@ OPERATIONS = {
     'scopes': ('GET', '/admin/oauth/access_scopes.json'),
 }
 
+SAFE_CODES = frozenset(('ambiguous_response_framing', 'ambiguous_response_headers', 'app_identity_mismatch', 'app_identity_read_failed', 'client_credentials_missing_or_invalid', 'configuration_invalid', 'dns_empty', 'duplicate_json_key', 'encoded_response', 'http_error', 'http_forbidden', 'http_rate_limited', 'http_server_error', 'http_unauthorized', 'internal_error_redacted', 'invalid_json', 'invalid_response_shape', 'mixed_credential_route_forbidden', 'nonpublic_address', 'preflight_failed_redacted', 'readonly_preflight_failed_redacted', 'redirect_refused', 'request_order_or_budget_invalid', 'request_shape_invalid', 'required_scopes_missing_or_duplicate', 'response_size_invalid', 'response_type_invalid', 'scope_response_invalid', 'shop_identity_mismatch', 'store_configuration_mismatch', 'token_expiry_invalid', 'token_response_invalid', 'total_deadline_exceeded', 'transport_cleanup_failed', 'transport_failed_no_retry', 'unsupported_transfer_encoding'))
+SAFE_STAGES = frozenset({'configuration', 'token_exchange', 'shop_identity', 'app_identity', 'granted_scopes', 'unknown'})
+STAGES = {'token': 'token_exchange', 'shop': 'shop_identity', 'identity': 'app_identity', 'scopes': 'granted_scopes'}
+
 
 class PreflightError(Exception):
-    """Only static, non-sensitive error codes may leave this module."""
+    """Only closed-set static metadata; never retain a caller exception string."""
+    def __init__(self, code, stage='configuration'):
+        self.code = code if type(code) is str and code in SAFE_CODES else 'internal_error_redacted'
+        self.stage = stage if type(stage) is str and stage in SAFE_STAGES else 'unknown'
+        super().__init__(self.code)
+
 
 
 def require(condition, code):
@@ -43,6 +53,10 @@ def require(condition, code):
 
 
 def decode(raw):
+    def finite_float(text):
+        value = float(text)
+        require(math.isfinite(value), 'invalid_json')
+        return value
     def pairs(items):
         result = {}
         for key, value in items:
@@ -53,7 +67,7 @@ def decode(raw):
     try:
         value = json.loads(raw, object_pairs_hook=pairs,
                            parse_constant=lambda _: (_ for _ in ()).throw(ValueError()),
-                           parse_float=lambda _: (_ for _ in ()).throw(ValueError()))
+                           parse_float=finite_float)
     except Exception:
         raise PreflightError('invalid_json') from None
     require(isinstance(value, dict), 'invalid_response_shape')
@@ -106,7 +120,15 @@ class FixedTransport:
                         ('content-length', 'content-encoding', 'content-type', 'transfer-encoding')),
                     'ambiguous_response_headers')
             h = {key.lower(): value for key, value in pairs}
-            require(response.status == 200, 'http_error_or_redirect')
+            status = response.status
+            if status != 200:
+                code = {401: 'http_unauthorized', 403: 'http_forbidden',
+                        429: 'http_rate_limited'}.get(status, 'http_error')
+                if type(status) is int and 300 <= status < 400:
+                    code = 'redirect_refused'
+                elif type(status) is int and 500 <= status < 600:
+                    code = 'http_server_error'
+                raise PreflightError(code)
             require(h.get('content-encoding', 'identity') == 'identity', 'encoded_response')
             require(h.get('content-type', '').split(';')[0].strip() == 'application/json',
                     'response_type_invalid')
@@ -118,8 +140,10 @@ class FixedTransport:
             require(len(raw) <= LIMIT and (length is None or len(raw) == int(length)),
                     'response_size_invalid')
             return raw
+        except PreflightError as error:
+            raise PreflightError(getattr(error, 'code', None), STAGES[operation]) from None
         except Exception:
-            raise PreflightError('transport_failed_no_retry') from None
+            raise PreflightError('transport_failed_no_retry', STAGES[operation]) from None
         finally:
             try:
                 if connection is not None:
@@ -138,6 +162,7 @@ def run(environ, *, transport=None):
                 v.isascii() and not any(c.isspace() or ord(c) < 32 for c in v)
                 for v in (client_id, secret)), 'client_credentials_missing_or_invalid')
     transport = transport or FixedTransport()
+    stage = 'token_exchange'
     try:
         auth = decode(transport('token', body=urlencode({
             'grant_type': 'client_credentials', 'client_id': client_id,
@@ -147,10 +172,12 @@ def run(environ, *, transport=None):
                 'token_response_invalid')
         expiry = auth.get('expires_in')
         require(type(expiry) is int and 0 < expiry <= 86400, 'token_expiry_invalid')
+        stage = 'shop_identity'
         shop = decode(transport('shop', token=token)).get('shop')
         require(isinstance(shop, dict) and type(shop.get('id')) is int and
                 shop['id'] == SHOP_ID and shop.get('myshopify_domain') == CANONICAL_DOMAIN,
                 'shop_identity_mismatch')
+        stage = 'app_identity'
         identity = decode(transport('identity', token=token))
         require(not identity.get('errors'), 'app_identity_read_failed')
         data = identity.get('data')
@@ -158,6 +185,7 @@ def run(environ, *, transport=None):
         require(isinstance(installation, dict) and installation.get('id') == INSTALLATION_ID and
                 isinstance(installation.get('app'), dict) and installation['app'].get('id') == APP_ID,
                 'app_identity_mismatch')
+        stage = 'granted_scopes'
         rows = decode(transport('scopes', token=token)).get('access_scopes')
         require(isinstance(rows, list) and len(rows) <= 256 and all(
             isinstance(r, dict) and set(r) == {'handle'} and isinstance(r['handle'], str)
@@ -172,10 +200,10 @@ def run(environ, *, transport=None):
                 'token_expiry_seconds': expiry, 'product_writes': 0,
                 'live_writer_authorized': False, 'app_identity_independently_verified': True,
                 'app_id': APP_ID, 'installation_id': INSTALLATION_ID}
-    except PreflightError:
-        raise
+    except PreflightError as error:
+        raise PreflightError(getattr(error, 'code', None), stage) from None
     except Exception:
-        raise PreflightError('preflight_failed_redacted') from None
+        raise PreflightError('preflight_failed_redacted', stage) from None
 
 
 def main():
@@ -185,8 +213,10 @@ def main():
     signal.alarm(100)
     try:
         receipt = run(os.environ)
-    except Exception:
-        print(json.dumps({'status': 'blocked', 'error': 'readonly_preflight_failed_redacted',
+    except Exception as error:
+        # Reconstruct through the closed sets even if an unexpected caller altered attributes.
+        safe = PreflightError(getattr(error, 'code', None), getattr(error, 'stage', None)) if type(error) is PreflightError else PreflightError('internal_error_redacted', 'unknown')
+        print(json.dumps({'status': 'blocked', 'error': safe.code, 'stage': safe.stage,
                           'live_writer_authorized': False}))
         return 1
     finally:

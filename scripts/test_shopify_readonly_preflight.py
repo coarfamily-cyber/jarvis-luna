@@ -168,6 +168,16 @@ class IndependentTransportTests(unittest.TestCase):
         self.assertNotIn('evil',str(caught.exception))
         self.assertEqual(self.connection.request.call_count,1)
 
+    def test_http_status_mapping_is_static_and_ignores_private_body(self):
+        for status,code in ((301,'redirect_refused'),(401,'http_unauthorized'),(403,'http_forbidden'),(429,'http_rate_limited'),(503,'http_server_error'),(418,'http_error')):
+            self.response.status=status
+            self.response.read.return_value=b'PRIVATE_SECRET https://evil.invalid'
+            self.response.read.reset_mock()
+            with self.assertRaises(p.PreflightError) as caught:self.call()
+            self.assertEqual(caught.exception.code,code)
+            self.assertEqual(caught.exception.stage,'token_exchange')
+            self.response.read.assert_not_called()
+
     def test_any_private_dns_answer_rejects_before_socket(self):
         for ip in ('127.0.0.1','10.0.0.1','169.254.169.254','::1'):
             self.addresses.return_value=[(2,1,6,'',('8.8.8.8',443)),(2,1,6,'',(ip,443))]
@@ -204,7 +214,77 @@ class IndependentTransportTests(unittest.TestCase):
             self.assertNotIn('dummy_secret',str(exc))
 
     def test_float_overflow_metadata_rejected(self):
-        for raw in (b'{"unused":1e999}',b'{"unused":1.5}'):
+        for raw in (b'{"unused":1e999}',b'{"unused":NaN}',b'{"unused":Infinity}'):
             with self.assertRaises(p.PreflightError):p.decode(raw)
+
+class DiagnosticSafetyTests(unittest.TestCase):
+    def cli(self, error):
+        output=io.StringIO()
+        with patch.object(p,'run',side_effect=error), contextlib.redirect_stdout(output):
+            self.assertEqual(p.main(),1)
+        text=output.getvalue()
+        for secret in ('PRIVATE_SECRET','evil.invalid','Authorization','PRIVATE_BODY'):
+            self.assertNotIn(secret,text)
+        doc=json.loads(text)
+        self.assertEqual(set(doc),{'status','error','stage','live_writer_authorized'})
+        self.assertIn(doc['error'],p.SAFE_CODES);self.assertIn(doc['stage'],p.SAFE_STAGES)
+        self.assertFalse(doc['live_writer_authorized'])
+        return doc
+
+    def test_cli_preserves_only_static_stage_and_error(self):
+        result=self.cli(p.PreflightError('http_forbidden','token_exchange'))
+        self.assertEqual(result['error'],'http_forbidden');self.assertEqual(result['stage'],'token_exchange')
+
+    def test_nested_cause_notes_and_unknown_exception_are_redacted(self):
+        error=RuntimeError('PRIVATE_SECRET https://evil.invalid Authorization PRIVATE_BODY')
+        error.__cause__=ValueError('PRIVATE_SECRET');error.add_note('PRIVATE_BODY')
+        result=self.cli(error)
+        self.assertEqual(result['error'],'internal_error_redacted')
+        safe=p.PreflightError('http_error','shop_identity')
+        safe.__cause__=error;safe.add_note('PRIVATE_SECRET')
+        self.assertEqual(self.cli(safe)['stage'],'shop_identity')
+
+    def test_mutated_unknown_and_missing_attributes_fail_redacted(self):
+        for mutation in ('unknown','missing_code','missing_stage','typed'):
+            error=p.PreflightError('http_error','app_identity')
+            if mutation=='unknown':error.code='PRIVATE_SECRET';error.stage='https://evil.invalid'
+            elif mutation=='missing_code':del error.code
+            elif mutation=='missing_stage':del error.stage
+            else:error.code={'Authorization':'PRIVATE_SECRET'};error.stage=['PRIVATE_BODY']
+            self.cli(error)
+
+    def test_constructor_does_not_stringify_untrusted_fields(self):
+        class Hostile:
+            def __str__(self):raise AssertionError('untrusted stringify')
+        result=self.cli(p.PreflightError(Hostile(),Hostile()))
+        self.assertEqual(result['error'],'internal_error_redacted');self.assertEqual(result['stage'],'unknown')
+
+    def test_finite_graphql_cost_metadata_accepted_not_authority(self):
+        fixture=PreflightTests();fixture.setUp()
+        fixture.responses[2]['extensions']={'cost':{'throttleStatus':{'restoreRate':50.0,'currentlyAvailable':999.5}}}
+        result=p.run(ENV,transport=fixture.request)
+        self.assertEqual(result['status'],'readonly_connection_verified')
+        self.assertNotIn('extensions',result);self.assertFalse(result['live_writer_authorized'])
+        self.assertEqual(p.decode(b'{"unused":1.5}')['unused'],1.5)
+
+    def test_float_identity_and_expiry_still_rejected(self):
+        for index,key,value in ((0,'expires_in',86399.0),(1,'id',float(p.SHOP_ID))):
+            fixture=PreflightTests();fixture.setUp()
+            if index==0:fixture.responses[index][key]=value
+            else:fixture.responses[index]['shop'][key]=value
+            with self.assertRaises(p.PreflightError):p.run(ENV,transport=fixture.request)
+            self.assertEqual(len(fixture.calls),index+1)
+
+    def test_each_operation_error_reports_stage_without_retry(self):
+        for operation,stage in p.STAGES.items():
+            fixture=PreflightTests();fixture.setUp();calls=[]
+            def transport(op,**kwargs):
+                calls.append(op)
+                if op==operation:raise p.PreflightError('http_rate_limited','unknown')
+                return fixture.request(op,**kwargs)
+            with self.assertRaises(p.PreflightError) as caught:p.run(ENV,transport=transport)
+            self.assertEqual(caught.exception.stage,stage)
+            self.assertEqual(caught.exception.code,'http_rate_limited')
+            self.assertEqual(calls,list(p.OPERATIONS)[:list(p.OPERATIONS).index(operation)+1])
 
 if __name__ == '__main__': unittest.main()
