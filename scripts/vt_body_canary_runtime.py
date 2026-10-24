@@ -7,6 +7,7 @@ an independently reviewed fixed run slot, source policy and workflow integration
 from datetime import datetime, timezone
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import reviewed_copy_transaction as tx
@@ -209,16 +210,56 @@ def source_guard(root):
                 'source_provider_stop_active')
 
 
-def fetch_source(root, output, *, request=gallery.https_request):
+def source_request(url, *, hosts):
+    require(url==SOURCE_URL and hosts=={'cdn.daisomall.co.kr'},'source_url_not_allowed')
+    parsed=gallery.safe_url(url,hosts)
+    connection=gallery.PinnedHTTPSConnection(parsed.hostname,timeout=30)
+    try:
+        connection.request('GET',parsed.path,headers={'User-Agent':'JarvisReviewedGallery/1.0','Accept-Encoding':'identity'})
+        response=connection.getresponse()
+        status=response.status
+        # Refusal/redirect is diagnosed before reading any potentially sensitive
+        # error body; no location is followed and no response body is logged.
+        if status!=200:
+            return status,{},b''
+        pairs=response.getheaders()
+        names=[k.lower() for k,_ in pairs]
+        require(all(names.count(k)<=1 for k in ('content-type','content-length','content-encoding','transfer-encoding')),
+                'source_ambiguous_headers')
+        headers={k.lower():v for k,v in pairs}
+        require(headers.get('content-encoding','identity')=='identity','encoded_body_refused')
+        length=headers.get('content-length')
+        require(length is None or (isinstance(length,str) and re.fullmatch(r'[0-9]{1,7}',length) and int(length)<=1064638),'response_too_large')
+        require(headers.get('transfer-encoding') in (None,'chunked') and
+                not(length and headers.get('transfer-encoding')),'source_ambiguous_headers')
+        raw=response.read(1064639)
+        require(len(raw)<=1064638,'response_too_large')
+        require(length is None or len(raw)==int(length),'response_truncated')
+        return status,headers,raw
+    finally:
+        connection.close()
+
+
+def fetch_source(root, output, *, request=source_request):
     source_guard(root)
     status,headers,raw=request(SOURCE_URL,hosts={'cdn.daisomall.co.kr'})
-    require(status==200,'source_http_or_redirect_stop')
-    require(headers.get('content-type','').split(';')[0].lower()=='image/jpeg'
-            and isinstance(raw,bytes) and len(raw)==1064638 and policy.digest(raw)==policy.SOURCE,
-            'source_bytes_mismatch')
+    require(type(status) is int,'source_http_status_invalid')
+    if status != 200:
+        reason={401:'source_http_unauthorized',403:'source_http_forbidden',429:'source_http_rate_limited'}.get(status,
+            'source_redirect_refused' if 300 <= status < 400 else
+            'source_http_server_error' if 500 <= status < 600 else 'source_http_error')
+        raise gallery.Hold(reason)
+    require(headers.get('content-type','').split(';')[0].lower()=='image/jpeg','source_content_type_mismatch')
+    require(isinstance(raw,bytes) and len(raw)==1064638,'source_size_mismatch')
+    require(policy.digest(raw)==policy.SOURCE,'source_hash_mismatch')
     # Ephemeral private runner file; explicitly excluded from every artifact.
-    with (Path(output)/'source.bin').open('xb') as stream:
-        stream.write(raw)
+    try:
+        with (Path(output)/'source.bin').open('xb') as stream:
+            stream.write(raw)
+    except FileExistsError:
+        raise gallery.Hold('source_file_already_exists') from None
+    except OSError:
+        raise gallery.Hold('source_file_write_failed') from None
 
 
 def context(environ):
@@ -248,17 +289,98 @@ def authenticate_run(environ, checkpoint):
     return ctx
 
 
+SAFE_FAILURES=frozenset({
+    'source_ambiguous_headers','source_http_status_invalid','source_http_unauthorized','source_http_forbidden',
+    'source_http_rate_limited','source_redirect_refused','source_http_server_error','source_http_error',
+    'source_content_type_mismatch','source_size_mismatch','source_hash_mismatch',
+    'source_file_already_exists','source_file_write_failed',
+    'source_diagnostic_not_approved','source_diagnostic_grant_missing','source_diagnostic_window_invalid',
+    'source_diagnostic_slot_invalid','source_diagnostic_shopify_credentials_forbidden',
+    'source_provider_stop_active','provider_stop_state_missing','provider_stop_state_invalid',
+    'source_url_invalid','source_url_not_allowed','dns_empty','non_public_network_destination',
+    'encoded_body_refused','response_too_large','response_truncated',
+    'json_file_missing_unsafe_or_oversized','json_invalid','duplicate_json_key','nonfinite_json_number',
+    'candidate_not_activated','fixed_run_context_required','expected_commit_required',
+    'authenticated_run_slot_required','approved_window_expired_or_future','consumed_or_uncertain_slot_stop',
+    'original_local_intent_missing','original_remote_intent_missing','source_target_invalid',
+    'regular_file_required','evidence_capacity','already_corrected_no_write','approved_visible_projection_changed',
+    'projection_incomplete','projection_truncated','target_status_changed','supplier_binding_changed',
+    'variants_changed','variant_incomplete','publication_incomplete','publication_changed','media_incomplete',
+    'image_incomplete','product_response_invalid','before_body_changed_requires_review','exact_after_body_mismatch'
+})
+
+
+def safe_failure(error, stage):
+    # Never stringify nested exceptions, HTTP body/headers, host or file paths.
+    if isinstance(error,auth.PreflightError):
+        observed=getattr(error,'code',None)
+        code=observed if isinstance(observed,str) and observed in auth.SAFE_CODES else 'internal_error_redacted'
+    elif isinstance(error,(gallery.Hold,ValueError)) and len(error.args)==1 and isinstance(error.args[0],str) and error.args[0] in SAFE_FAILURES:
+        code=error.args[0]
+    elif isinstance(error,OSError):
+        code='transport_or_local_io_failed'
+    else:
+        code='internal_error_redacted'
+    stage=stage if isinstance(stage,str) and stage in {'context','source','identity','prepare','apply','source_diagnostic'} else 'unknown'
+    return {'state':'blocked_or_uncertain','stage':stage,'error':code,'retry_allowed':False}
+
+
+SOURCE_DIAGNOSTIC_ENABLED=True
+SOURCE_DIAGNOSTIC_RUN_NUMBER=6
+SOURCE_DIAGNOSTIC_APPROVED_AT='2026-10-24T12:24:38+00:00'
+SOURCE_DIAGNOSTIC_EXPIRES_AT='2026-10-25T12:24:38+00:00'
+
+
+def source_diagnostic_context(env, now):
+    require(SOURCE_DIAGNOSTIC_ENABLED,'source_diagnostic_not_approved')
+    require(isinstance(SOURCE_DIAGNOSTIC_APPROVED_AT,str) and isinstance(SOURCE_DIAGNOSTIC_EXPIRES_AT,str),
+            'source_diagnostic_grant_missing')
+    start=datetime.fromisoformat(SOURCE_DIAGNOSTIC_APPROVED_AT)
+    end=datetime.fromisoformat(SOURCE_DIAGNOSTIC_EXPIRES_AT)
+    require(start <= now < end and 0 < (end-start).total_seconds() <= 86400,
+            'source_diagnostic_window_invalid')
+    require(env.get('GITHUB_REPOSITORY')=='coarfamily-cyber/jarvis-luna'
+            and env.get('GITHUB_REPOSITORY_ID')=='1431541717'
+            and env.get('GITHUB_REF')=='refs/heads/main'
+            and env.get('GITHUB_EVENT_NAME')=='workflow_dispatch'
+            and env.get('GITHUB_RUN_ATTEMPT')=='1'
+            and env.get('GITHUB_RUN_NUMBER')==str(SOURCE_DIAGNOSTIC_RUN_NUMBER),
+            'source_diagnostic_slot_invalid')
+    require(gallery.SHA1.fullmatch(env.get('GITHUB_SHA','')) is not None
+            and env.get('EXPECTED_SHA')==env['GITHUB_SHA'],'expected_commit_required')
+    require(not any(env.get(k) for k in ('SHOPIFY_CLIENT_ID','SHOPIFY_CLIENT_SECRET','SHOPIFY_ADMIN_TOKEN','SHOPIFY_STORE')),
+            'source_diagnostic_shopify_credentials_forbidden')
+
+
+def source_diagnostic(env, root, output):
+    source_diagnostic_context(env,datetime.now(timezone.utc))
+    output=Path(output)
+    output.mkdir(mode=0o700,parents=False,exist_ok=False)
+    try:
+        fetch_source(root,output)
+        result={'state':'source_hash_verified','source_sha256':policy.SOURCE,'source_bytes':1064638,
+                'source_gets':1,'shopify_requests':0,'product_writes':0,'retry_allowed':False}
+    except Exception as error:
+        result={**safe_failure(error,'source_diagnostic'),'shopify_requests':0,'product_writes':0}
+    gallery.atomic_json(output/'result.json',result)
+    print(json.dumps(result))
+    return 0 if result['state']=='source_hash_verified' else 1
+
+
 def main(argv=None):
     import argparse
     import os
     parser=argparse.ArgumentParser()
-    parser.add_argument('phase',choices=('prepare','apply'))
+    parser.add_argument('phase',choices=('prepare','apply','source_diagnostic'))
     parser.add_argument('--output',required=True)
     parser.add_argument('--root',default='.')
     args=parser.parse_args(argv)
     stage='context'
     try:
         env=os.environ
+        if args.phase=='source_diagnostic':
+            stage='source_diagnostic'
+            return source_diagnostic(env,args.root,args.output)
         context(env)
         cp=Checkpoint(env.get('GITHUB_TOKEN'),env.get('CHECKPOINT_ID','1'),
                       env.get('CHECKPOINT_DIGEST','0'*64),policy=Policy())
@@ -309,9 +431,9 @@ def main(argv=None):
         gallery.atomic_json(output/'result.json',result)
         print(json.dumps(result))
         return 0 if result['state']=='verified' and result.get('writes')==1 else 1
-    except Exception:
-        # Never dump exception text, HTTP response, body, headers or credentials.
-        print(json.dumps({'state':'blocked_or_uncertain','stage':stage,'retry_allowed':False}))
+    except Exception as error:
+        # Known static causes are useful; arbitrary exception contents are not.
+        print(json.dumps(safe_failure(error,stage)))
         return 1
 
 

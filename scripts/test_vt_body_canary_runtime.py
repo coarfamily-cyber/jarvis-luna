@@ -25,6 +25,102 @@ def sample():
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_malformed_preflight_error_attributes_are_safely_redacted(self):
+        for value in (None, [], {}, 'SECRET_TOKEN'):
+            error=r.auth.PreflightError('http_forbidden')
+            error.code=value
+            error.__cause__=RuntimeError('SECRET_TOKEN nested payload')
+            with self.subTest(value=value):
+                receipt=r.safe_failure(error,'source_diagnostic')
+                self.assertEqual(receipt['error'],'internal_error_redacted')
+                self.assertNotIn('SECRET_TOKEN',json.dumps(receipt))
+        error=r.auth.PreflightError('http_forbidden')
+        del error.code
+        self.assertEqual(r.safe_failure(error,'source')['error'],'internal_error_redacted')
+
+    def test_source_headers_ascii_bounded_and_unambiguous_before_read(self):
+        cases=[ [('Content-Length','１')], [('Content-Length','0'*10000)],
+                [('Content-Length','1'),('content-length','1')],
+                [('Content-Length','1'),('Transfer-Encoding','chunked')],
+                [('Transfer-Encoding','gzip')], [('Content-Encoding','gzip')]]
+        for headers in cases:
+            class Response:
+                status=200
+                def getheaders(self):return headers
+                def read(self,*args):raise AssertionError('unsafe framing must stop before read')
+            class Connection:
+                def __init__(self,*args,**kwargs):pass
+                def request(self,*args,**kwargs):pass
+                def getresponse(self):return Response()
+                def close(self):pass
+            with self.subTest(headers=str(headers)[:100]), patch.object(r.gallery,'PinnedHTTPSConnection',Connection):
+                with self.assertRaises(r.gallery.Hold):
+                    r.source_request(r.SOURCE_URL,hosts={'cdn.daisomall.co.kr'})
+
+    def test_source_transport_refusal_never_reads_body_or_follows_redirect(self):
+        for status in (302,403,429):
+            class Response:
+                def read(self,*args):raise AssertionError('error body must not be read')
+                def getheaders(self):raise AssertionError('redirect/error headers not needed')
+            response=Response();response.status=status
+            class Connection:
+                calls=[]
+                def __init__(self,*args,**kwargs):pass
+                def request(self,*args,**kwargs):self.calls.append((args,kwargs))
+                def getresponse(self):return response
+                def close(self):pass
+            with patch.object(r.gallery,'PinnedHTTPSConnection',Connection):
+                self.assertEqual(r.source_request(r.SOURCE_URL,hosts={'cdn.daisomall.co.kr'}),(status,{},b''))
+                self.assertEqual(len(Connection.calls),1)
+                self.assertNotIn('Authorization',str(Connection.calls))
+        with self.assertRaises(Exception):r.source_request('https://other.invalid/',hosts={'other.invalid'})
+
+    def test_source_only_diagnostic_has_no_shopify_calls_and_preserves_spent_writer(self):
+        import os
+        env={'GITHUB_REPOSITORY':'coarfamily-cyber/jarvis-luna','GITHUB_REPOSITORY_ID':'1431541717',
+             'GITHUB_REF':'refs/heads/main','GITHUB_EVENT_NAME':'workflow_dispatch','GITHUB_RUN_ATTEMPT':'1',
+             'GITHUB_RUN_NUMBER':'6','GITHUB_SHA':'a'*40,'EXPECTED_SHA':'a'*40}
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ,env,clear=True), \
+             patch.object(r,'SOURCE_DIAGNOSTIC_ENABLED',True), \
+             patch.object(r,'SOURCE_DIAGNOSTIC_APPROVED_AT','2026-10-24T00:00:00+00:00'), \
+             patch.object(r,'SOURCE_DIAGNOSTIC_EXPIRES_AT','2026-10-25T00:00:00+00:00'), \
+             patch.object(r,'fetch_source') as fetch, \
+             patch.object(r.auth,'_verified_session',side_effect=AssertionError('Shopify forbidden')), \
+             patch.object(r,'datetime',wraps=datetime) as clock:
+            clock.now.return_value=datetime(2026,10,24,12,tzinfo=timezone.utc)
+            self.assertEqual(r.main(['source_diagnostic','--output',str(Path(d)/'one')]),0)
+            self.assertEqual(fetch.call_count,1)
+            receipt=json.loads((Path(d)/'one/result.json').read_text())
+            self.assertEqual(receipt['shopify_requests'],0)
+            with self.assertRaises(Exception):r.context(env)  # slot 6 never grants writer slot 5.
+            for key,value in (('GITHUB_RUN_ATTEMPT','2'),('GITHUB_RUN_NUMBER','7'),('SHOPIFY_CLIENT_SECRET','SECRET')):
+                with self.subTest(key=key),self.assertRaises(Exception):
+                    r.source_diagnostic_context(dict(env,**{key:value}),datetime(2026,10,24,12,tzinfo=timezone.utc))
+
+    def test_safe_failure_never_exposes_nested_body_token_host(self):
+        errors=[RuntimeError('SECRET_TOKEN https://private.invalid/body'),
+                ValueError({'nested':'SECRET_TOKEN'}), OSError('SECRET_TOKEN /private/path'),
+                r.gallery.Hold('source_http_forbidden'), r.auth.PreflightError('http_forbidden')]
+        for error in errors:
+            with self.subTest(kind=type(error).__name__):
+                receipt=r.safe_failure(error,'https://SECRET_TOKEN.invalid')
+                self.assertNotIn('SECRET_TOKEN',json.dumps(receipt))
+                self.assertNotIn('private',json.dumps(receipt))
+                self.assertEqual(receipt['stage'],'unknown')
+                self.assertFalse(receipt['retry_allowed'])
+        self.assertEqual(r.safe_failure(errors[3],'source')['error'],'source_http_forbidden')
+
+    def test_source_exact_safe_http_enums(self):
+        expected={301:'source_redirect_refused',403:'source_http_forbidden',429:'source_http_rate_limited',
+                  401:'source_http_unauthorized',500:'source_http_server_error',404:'source_http_error'}
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'data').mkdir();(root/'data/gosi.json').write_text('{"provider_stops":[]}')
+            for status,code in expected.items():
+                with self.subTest(status=status):
+                    with self.assertRaises(r.gallery.Hold) as found:
+                        r.fetch_source(root,root,request=lambda *a,**k:(status,{},b'SECRET'))
+                    self.assertEqual(r.safe_failure(found.exception,'source')['error'],code)
+
     def test_projection_and_changes_rejected(self):
         s=sample()
         self.assertEqual(r.projection(json.dumps({'data':{'product':s}}).encode()),s)

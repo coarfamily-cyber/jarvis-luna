@@ -35,7 +35,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
         path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
         original=path.read_text()
         for altered in (original.replace('default: connection','default: organist_dry_run'),
-                        original.replace('[connection, organist_dry_run, vt_usage_canary]', '[connection, organist_dry_run, vt_usage_canary, execute]')):
+                        original.replace('[connection, organist_dry_run, vt_usage_canary, source_diagnostic]', '[connection, organist_dry_run, vt_usage_canary, source_diagnostic, execute]')):
             path.write_text(altered)
             with self.assertRaises(ValueError): policy.verify(self.root)
 
@@ -47,6 +47,15 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
                         original.replace('overwrite: false', 'overwrite: true')):
             path.write_text(altered)
             with self.assertRaises(ValueError): policy.verify(self.root)
+
+    def test_source_diagnostic_has_no_shopify_environment_or_writer_slot(self):
+        path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
+        original=path.read_text()
+        for altered in (original.replace('  source_diagnostic:\n', '  source_diagnostic:\n    environment: jarvis-shopify-writer\n'),
+                        original.replace('github.run_number == 6', 'github.run_number == 5'),
+                        original.replace('"$RUNNER_TEMP/vt-source-diagnostic"','"$RUNNER_TEMP/vt-usage-canary"')):
+            path.write_text(altered)
+            with self.assertRaises(ValueError):policy.verify(self.root)
 
     def test_preflight_write_scope_rejected(self):
         path=self.root/'.github/workflows/owned-shopify-readonly-preflight.yml'
