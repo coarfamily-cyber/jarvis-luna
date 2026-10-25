@@ -1,0 +1,48 @@
+name: Owned Shopify US free shipping
+# 2026-10-25 사용자 결정: 미국 결제 배송비 $0.
+# 판매가에 배송비가 이미 들어 있어(scripts/pricing_model.py) 결제에서 다시 받지 않는다.
+# check 는 읽기만 한다. apply 는 어긋났을 때만 바꾸고 다시 읽어 $0 을 확인한다.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed main commit
+        required: true
+        type: string
+      mode:
+        description: check reads only; apply changes only when US checkout shipping is not $0
+        required: true
+        default: check
+        type: choice
+        options: [check, apply]
+permissions:
+  contents: read
+concurrency:
+  group: owned-shopify-us-free-shipping
+  cancel-in-progress: false
+jobs:
+  us_free_shipping:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha
+    environment: jarvis-shopify-writer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Offline plan tests before credentials
+        env:
+          PYTHONPATH: scripts
+        run: python -B -m unittest test_shopify_us_free_shipping -v
+      - name: Check or apply US free shipping and read back
+        env:
+          SHOPIFY_STORE: rb3zh1-i1.myshopify.com
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          APPLY: ${{ inputs.mode == 'apply' && '1' || '0' }}
+        run: python -B scripts/shopify_us_free_shipping.py
