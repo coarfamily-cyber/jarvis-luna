@@ -110,7 +110,9 @@ EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '369b59290807bf5d763aa84654ebdadb7d37f1
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
  # Reviewed owner-audit home-card Pages bytes v2; all execution policies remain unchanged.
- '.github/workflows/owned-pages-once.yml': {'blob': '9e48e37908933e8656ab41c311975e83da0a70be',
+ # 2026-10-25 owner-approved (PR #2): only the expected site_hash changed for the
+ # 국내 판매처 랭킹 card and display-only JPY line in index.html. Still 36 public files.
+ '.github/workflows/owned-pages-once.yml': {'blob': 'd385b45f30b9e500bfd7fe438b9d7514e62269e7',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},
