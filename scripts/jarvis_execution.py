@@ -308,6 +308,9 @@ def _snapshot(root, action, now):
             'sha256':watcher.get('source_document_hash'),'captured_at':watcher.get('captured_at'),
             'observed_at':watcher.get('observed_at'),'freshness':'actual_watch_scope_only',
             'blockers':list(watcher.get('blockers') or [])})
+    if payload.get('purpose') == 'review_verified_technical_artifact_only':
+        from technical_review_binding import evidence
+        report['technical_review_evidence'] = evidence(root, action)
     return report
 
 
@@ -519,6 +522,10 @@ def validate_receipt(root, receipt, ledger=None):
                 return False
             if report.get('sources') != receipt.get('source_evidence') or report.get('business_clearance') is not False:
                 return False
+            if action['payload'].get('purpose') == 'review_verified_technical_artifact_only':
+                from technical_review_binding import evidence
+                if report.get('technical_review_evidence') != evidence(root, action):
+                    return False
             if action['payload'].get('purpose') == 'verify_actual_watch_recovery_only':
                 evidence = report.get('source_recovery_evidence')
                 if not isinstance(evidence, dict) or evidence != receipt.get('source_recovery_evidence'):
