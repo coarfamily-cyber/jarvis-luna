@@ -1,0 +1,52 @@
+{
+  "fixture_only": true,
+  "note": "Synthetic examples only. Not a real offer, approved master IDs, account, shipping quote or stock evidence.",
+  "product": {
+    "canonical_product_id": "CP000067",
+    "pd_no": "1041749",
+    "name_ko": "SYNTHETIC FIXTURE",
+    "image_url": "https://example.org/images/fixture.jpg",
+    "price_krw": 5000,
+    "source": {"system": "daisomall.co.kr", "url": "https://example.org/fixture", "collected_at": "2026-10-25T00:00:00+00:00"},
+    "listing": {"ready": false, "blocked_by": ["verified_market_price_missing"]}
+  },
+  "listing": {
+    "name": "検証用サンプル",
+    "comments": "ローカル検証専用。販売商品ではありません。",
+    "brand_id": 0,
+    "category_id": 3064,
+    "price": 22500,
+    "available_until": "2026/11/01",
+    "buying_area_id": "2001001000",
+    "shipping_area_id": "2001001000",
+    "shipping_methods": [{"shipping_method_id": 888}],
+    "options": [
+      {"type": "color", "value": "White", "position": 1, "master_id": 1},
+      {"type": "size", "value": "S", "position": 1, "master_id": 1}
+    ],
+    "variants": [{"options": [{"type": "color", "value": "White"}, {"type": "size", "value": "S"}], "stock_type": "stock_in_hand", "stocks": 1}]
+  },
+  "accepted": {"request_uid": "offline-request-1", "request_received_at": "2026-10-25T09:01:00+09:00"},
+  "rejected": {"errors": {"name": ["invalid fixture name"]}},
+  "created": {"reference_number": "jarvis-CP000067", "seller_id": 10000000, "id": 123456, "status": "public", "created_at": "2026-10-25T09:01:01+09:00", "updated_at": "2026-10-25T09:01:02+09:00"},
+  "failed": {"request_uid": "offline-request-1", "seller_id": 10000000, "errors": {"name": ["fixture async rejection"]}, "failed_at": "2026-10-25T09:01:02+09:00"},
+  "costs": {
+    "schema_version": 1,
+    "offer": {"currency": "JPY", "unit_price_jpy": "5000", "listing_quantity": 1, "customer_shipping_jpy": "0", "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "purchase": {"currency": "KRW", "unit_cost_krw": "5000", "units_per_listing": 2, "total_units": 2, "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "shipping": {
+      "currency": "KRW", "destination": "JP", "shipment_count": 1, "scope": "order", "service": "EMS", "contract_confirmed": false,
+      "product_net_weight_g": "100", "packed_actual_weight_g": "350", "box_cm": {"length": "20", "width": "10", "height": "10"},
+      "tariff_brackets_g": ["500", "750", "1000", "1250"], "billed_weight_g": "500",
+      "base_krw": "26000", "transport_surcharge_krw": "0", "other_shipping_krw": "0", "final_quote_krw": "26000", "includes_all_surcharges": true,
+      "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"
+    },
+    "packaging": {"currency": "KRW", "scope": "order", "cost_krw": "1000", "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "fee": {"currency": "JPY", "basis": "order_gross_jpy", "rate": "0.07", "fixed_jpy": "100", "fixed_scope": "order", "rounding": "CEILING", "effective_at": "2026-10-01T00:00:00Z", "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "fx": {"direction": "KRW_PER_JPY", "rate": "9", "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "supplier": {"observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "legal": {"observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "strategy": {"comparison_basis": "order_customer_total_jpy", "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"},
+    "market": {"currency": "JPY", "max_customer_total_jpy": "6000", "observed_at": "2026-10-25T00:00:00Z", "valid_until": "2026-10-26T00:00:00Z"}
+  }
+}
