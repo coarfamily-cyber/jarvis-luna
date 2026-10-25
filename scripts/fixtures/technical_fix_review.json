@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "incidents": [
+    {
+      "incident_id": "pages-workflow-inventory",
+      "summary": "Pages workflow inventory와 정책 pin 불일치 재발 방지",
+      "source": {
+        "repository": "coarfamily-cyber/jarvis-luna",
+        "code_state": "committed",
+        "commit": "3a786607fa1e4d37e03c80d55cf56a3b713d783a",
+        "code_paths": [
+          "scripts/check_owned_workflow_policy.py",
+          "scripts/test_owned_workflow_policy.py",
+          ".github/workflows/owned-pages-once.yml"
+        ]
+      },
+      "evidence": [
+        {
+          "path": "fx-observation-candidate/commit-receipt.json",
+          "sha256": "bb09815d126d6de226dc726ff1af1b8536f43559a945cdc071d99b108fa7906c",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        },
+        {
+          "path": "fx-observation-candidate/integration/scripts/test_owned_workflow_policy.py",
+          "sha256": "d5daf419b3310328d4ab754e64ee2ad0464c3b9b625b8c4844b19a1f36362aea",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        }
+      ],
+      "test_state": {
+        "reported_result": "recorded exact YAML build PASS; test_pages_exact_inventory_matches_policy exists",
+        "executed_by_this_document": false,
+        "scope": "local evidence inspection only"
+      },
+      "owner_role": "unassigned",
+      "proposed_routing": [],
+      "routing_reason": "No technical operations owner defined in inspected TEAMS; do not infer design as release owner",
+      "manual_review_required": true,
+      "sent_at": null,
+      "acknowledgment": null,
+      "team_action_receipt": null,
+      "team_status": "not_verified",
+      "execution_authority": "none"
+    },
+    {
+      "incident_id": "vt-source-webp",
+      "summary": "jpg 경로의 실제 WEBP를 bytes와 decode로 검증",
+      "source": {
+        "repository": "coarfamily-cyber/jarvis-luna",
+        "code_state": "committed",
+        "commit": "3949dbef67e7c0ad2c4dcd3d1ce23e5b6021747f",
+        "code_paths": [
+          "scripts/vt_body_canary_runtime.py",
+          "scripts/test_vt_body_canary_runtime.py"
+        ]
+      },
+      "evidence": [
+        {
+          "path": "fx-observation-candidate/integration/scripts/vt_body_canary_runtime.py",
+          "sha256": "72aacfba3decef8a4c2143e9ef50ff1613d48cca572712b04f47d37c00a4584f",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        },
+        {
+          "path": "fx-observation-candidate/integration/scripts/test_vt_body_canary_runtime.py",
+          "sha256": "99ff9a30044b0982bc14ec4b1687a7d940f7d4452b5c94613d2e8a253191003c",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        }
+      ],
+      "test_state": {
+        "reported_result": "source regression test code inspected; live outcome not independently re-run here",
+        "executed_by_this_document": false,
+        "scope": "local evidence inspection only"
+      },
+      "owner_role": "unassigned",
+      "proposed_routing": [
+        "sourcing"
+      ],
+      "routing_reason": "Source-evidence review proposal only; sourcing is not assigned technical code ownership",
+      "manual_review_required": true,
+      "sent_at": null,
+      "acknowledgment": null,
+      "team_action_receipt": null,
+      "team_status": "not_verified",
+      "execution_authority": "none"
+    },
+    {
+      "incident_id": "fx-timestamp-schema",
+      "summary": "FX timestamp 잘못된 자료형과 길이를 fail-closed 검증",
+      "source": {
+        "repository": "coarfamily-cyber/jarvis-luna",
+        "code_state": "committed",
+        "commit": "3a786607fa1e4d37e03c80d55cf56a3b713d783a",
+        "code_paths": [
+          "scripts/fx_readonly_observation.py",
+          "scripts/test_fx_readonly_observation.py"
+        ]
+      },
+      "evidence": [
+        {
+          "path": "fx-observation-candidate/manifest.json",
+          "sha256": "c07b86e1812b932df4cdbdd694bfdf696f863e76d986747ef095971b2213c578",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        },
+        {
+          "path": "fx-observation-candidate/commit-receipt.json",
+          "sha256": "bb09815d126d6de226dc726ff1af1b8536f43559a945cdc071d99b108fa7906c",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        },
+        {
+          "path": "fx-observation-candidate/integration/scripts/test_fx_readonly_observation.py",
+          "sha256": "257b6a84c16fa92653f3d5008dbe4f56d53c071e72991243fb4aeb751a9c6f28",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        }
+      ],
+      "test_state": {
+        "reported_result": "recorded independent 79 PASS; malformed timestamp regression exists",
+        "executed_by_this_document": false,
+        "scope": "local evidence inspection only"
+      },
+      "owner_role": "unassigned",
+      "proposed_routing": [
+        "pricing"
+      ],
+      "routing_reason": "Pricing review proposal only; no price change or technical owner assignment",
+      "manual_review_required": true,
+      "sent_at": null,
+      "acknowledgment": null,
+      "team_action_receipt": null,
+      "team_status": "not_verified",
+      "execution_authority": "none"
+    },
+    {
+      "incident_id": "core-empty-job-metadata",
+      "summary": "Core 정확한 terminal run의 빈 steps metadata bounded retry 후보",
+      "source": {
+        "repository": "coarfamily-cyber/jarvis-luna",
+        "code_state": "local_candidate",
+        "commit": null,
+        "code_paths": [
+          "scripts/durable_local_publisher.py",
+          "scripts/test_durable_metadata_retry.py"
+        ]
+      },
+      "evidence": [
+        {
+          "path": "core-metadata-retry-candidate/README.md",
+          "sha256": "34f28e423e13d5943a797431bbb947b2d57654fcc1f8a06dcd1134ac59653e17",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        },
+        {
+          "path": "core-metadata-retry-candidate/scripts/durable_local_publisher.py",
+          "sha256": "04afc4bf9e08aea647d74e0dedc9cd06b052211dbe1cf3ee24024b6a22514c20",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        },
+        {
+          "path": "core-metadata-retry-candidate/scripts/test_durable_metadata_retry.py",
+          "sha256": "35294d96979848f606286f91d949b9e105236bf0e9c91bc3d61c60cb2600d8ba",
+          "meaning": "local_captured_bytes_not_team_receipt"
+        }
+      ],
+      "test_state": {
+        "reported_result": "README reports isolated 96/96 PASS; no live deployment",
+        "executed_by_this_document": false,
+        "scope": "local evidence inspection only"
+      },
+      "owner_role": "unassigned",
+      "proposed_routing": [],
+      "routing_reason": "No technical operations owner defined; policy contract transition is not deployed",
+      "manual_review_required": true,
+      "sent_at": null,
+      "acknowledgment": null,
+      "team_action_receipt": null,
+      "team_status": "not_verified",
+      "execution_authority": "none"
+    }
+  ]
+}
