@@ -1880,13 +1880,16 @@ def parse_product(
         "site_category": category,
         "price_krw": price,
         "price_source": price_source,
+        # False means no sold-out marker observed, NOT confirmed availability.
+        # This HTML parser has no verified positive stock signal.
         "sold_out": sold_out,
         "stock_note": (
             "품절 표시 있음"
             if sold_out
-            else "판매 중"
+            else "판매 상태 확인 필요"
         ),
-        "stock_checked_at": now_iso(),
+        # A page-level sold-out hint is not a SKU-specific stock observation.
+        "stock_checked_at": None,
         "rating": rating,
         "review_count": review_count,
         "image_url": (
@@ -1941,7 +1944,7 @@ def merge_search_fallback(
             or "search-goods",
             "sold_out": False,
             "stock_note": "판매 상태 확인 필요",
-            "stock_checked_at": now_iso(),
+            "stock_checked_at": None,
             "rating": None,
             "review_count": None,
             "image_url": fallback.get(

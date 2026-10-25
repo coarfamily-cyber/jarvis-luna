@@ -195,9 +195,10 @@ class CurrentEvidenceTests(unittest.TestCase):
             self.assertFalse(result['eligible'])
             self.assertIn('canonical_identity_missing_or_ambiguous', result['reasons'])
 
-    def test_soldout_and_non_s_never_become_eligible(self):
+    def test_sourcing_stock_does_not_gate_but_non_s_remains_ineligible(self):
         self.p['sold_out'] = True
-        self.assertFalse(self.assess()['eligible'])
+        self.assertTrue(self.assess()['eligible'])
+        self.assertTrue(self.p['sold_out'])
         self.p['sold_out'] = False
         self.r['grade'] = 'A'
         self.assertFalse(self.assess()['eligible'])

@@ -188,11 +188,39 @@ class ComparisonTests(unittest.TestCase):
         self.assertIn('payload_hash_approval', proposal['remaining_gates'])
         self.assertEqual(incumbent, before)
 
-    def test_sold_out_and_old_candidates_never_proposed(self):
-        for changes in ({'sold_out': True}, {'collected_at': OLD}):
-            p = pool(); p['items']['fixture-new'].update(changes)
-            report = compare.build_comparison(p, {'products': [observed('operating')]}, self.dashboard(), now=NOW)
+    def test_supplier_stock_does_not_block_sourcing_or_fabricate_observation(self):
+        for changes in ({'sold_out': True, 'stock_note': '품절', 'stock_checked_at': OLD},
+                        {'sold_out': False, 'stock_note': '판매 상태 확인 필요', 'stock_checked_at': None},
+                        {'sold_out': False, 'stock_note': '판매 중', 'stock_checked_at': FRESH},
+                        {}):
+            with self.subTest(changes=changes):
+                p = pool(); candidate = p['items']['fixture-new']
+                for key in ('sold_out', 'stock_note', 'stock_checked_at'):
+                    candidate.pop(key, None)
+                candidate.update(changes)
+                before = deepcopy(p)
+                incumbent = observed('operating'); incumbent.update(rating=0, review_count=0)
+                report = compare.build_comparison(p, {'products': [incumbent]}, self.dashboard(), now=NOW)
+                self.assertEqual(report['proposal_count'], 1)
+                row = report['items'][0]
+                self.assertEqual(row['supplier_stock_observation'], changes)
+                self.assertTrue(row['sourcing_assumed'])
+                self.assertEqual(row['sourcing_assumption'], 'supplier_stock_not_gating')
+                self.assertFalse(row['may_publish'])
+                self.assertFalse(row['replacement_proposal']['may_execute'])
+                self.assertTrue(row['approval_required'])
+                self.assertEqual(p, before)
+
+    def test_sourcing_assumption_does_not_bypass_freshness_or_market_evidence(self):
+        for stale, dashboard in ((True, self.dashboard()), (False, {})):
+            p = pool(); p['items']['fixture-new']['sold_out'] = True
+            if stale:
+                p['items']['fixture-new']['collected_at'] = OLD
+            incumbent = observed('operating'); incumbent.update(rating=0, review_count=0)
+            report = compare.build_comparison(p, {'products': [incumbent]}, dashboard, now=NOW)
             self.assertEqual(report['proposal_count'], 0)
+            reason = 'candidate_observation_stale_or_missing' if stale else 'verified_market_match_missing'
+            self.assertIn(reason, report['items'][0]['comparison_blockers'])
 
 
 class CurrentRunValidationTests(unittest.TestCase):

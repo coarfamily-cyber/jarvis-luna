@@ -43,8 +43,8 @@ def build_comparison(pool, operating, dashboard, *, now=None, operating_sha256=N
         blockers = []
         if not fresh:
             blockers.append('candidate_observation_stale_or_missing')
-        if candidate.get('sold_out'):
-            blockers.append('sold_out')
+        # Owner sources independently: supplier online stock is not a sourcing gate.
+        # Preserve observations below; this is not verified held inventory.
         if score['score_breakdown']['us_block_kind']:
             blockers.append(score['score_breakdown']['us_block_kind'])
         if not evidence or not score.get('best_global_match'):
@@ -76,6 +76,10 @@ def build_comparison(pool, operating, dashboard, *, now=None, operating_sha256=N
         rows.append({'pd_no': pd_no, 'name': score['name'], 'bucket': score['bucket'],
                      'url': candidate.get('url'), 'image_url': candidate.get('image_url'),
                      'collected_at': candidate.get('collected_at'),
+                     'supplier_stock_observation': {key: candidate[key] for key in
+                         ('sold_out', 'stock_note', 'stock_checked_at') if key in candidate},
+                     'sourcing_assumed': True,
+                     'sourcing_assumption': 'supplier_stock_not_gating',
                      'score': score,
                      'comparison_status': 'proposal_ready' if proposal else 'review_only',
                      'comparison_blockers': blockers,

@@ -10,7 +10,8 @@ JARVIS LUNA - 정본 S등급 다이소 뷰티 후보 -> Shopify 일일 등록
 ----
 1. 정본 채점표에서 S등급만 읽고 스킨케어 / 메이크업 / 바디케어 각 최대 1개를 고른다.
    바디 연구 초안 예외는 별도 정책 opt-in과 정확한 비공개 소유자 승인이 모두 있을 때만 시도한다.
-2. 판매 가능(품절 아님, 재고 > 0) 이고, 이미 Shopify 에 등록하지 않은 상품만 고른다.
+2. 소싱 재판매 정책상 온라인 재고는 후보 차단에 쓰지 않는다. 원본 재고 사실은 보존한다.
+   가격·전시·이미지·중복·안전 검증은 유지하며 재고 미확인/품절 소싱 후보는 비공개 초안이다.
    이력 레지스트리와 Shopify 전체 카탈로그의 번호·이름·태그·SKU로 중복을 막는다.
 3. 영문 제목/설명을 만든다. GEMINI_API_KEY(무료 티어)가 있으면 사용하고,
    없거나 실패하면 정본 사실(브랜드·상품명·용량)만으로 규칙 기반 초안을 쓴다.
@@ -148,16 +149,37 @@ def fetch_daiso(cat_name, cat_no):
     return (body.get("data") or {}).get("list") or []
 
 
+def online_stock_state(p):
+    """Online source hint only, never a sourcing eligibility or stock guarantee."""
+    if p.get("soldOutYn") == "Y":
+        return "unavailable"
+    value = p.get("onlStckQy")
+    # Do not convert missing, malformed or boolean quantities into stock facts.
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return "unknown"
+    text = str(value).strip()
+    if not re.fullmatch(r"[0-9]+", text):
+        return "unknown"
+    # No integer conversion: even oversized digit strings must not crash.
+    if not text.lstrip("0"):
+        return "unavailable"
+    return "available" if p.get("soldOutYn") == "N" else "unknown"
+
+
+def online_stock_draft_reasons(p):
+    return (["supplier_stock_not_gating_sourcing_assumption_draft_only"]
+            if online_stock_state(p) != "available" else [])
+
+
 def sellable(p):
+    """Sourcing candidate gate, NOT a guarantee of supplier stock availability."""
     try:
         price = int(str(p.get("pdPrc") or "0"))
     except ValueError:
         return False
     return (
         price > 0
-        and p.get("soldOutYn") == "N"
         and p.get("exhYn") != "N"
-        and int(p.get("onlStckQy") or 0) > 0
         and bool(p.get("pdImgUrl"))
     )
 
@@ -1457,12 +1479,14 @@ def daiso_lookup(pd_no):
     p = dict(hit)
     try:
         p["_current_detail_available"] = (int(str(info.get("pdPrc") or "0")) > 0
-                                          and int(str(info.get("stckQy") or "0")) > 0
-                                          and info.get("exhYn") != "N" and info.get("soldOutYn") != "Y")
+                                          and info.get("exhYn") != "N")
     except (TypeError, ValueError):
         p["_current_detail_available"] = False
     p["brndNm"] = str(hit.get("brndNm") or info.get("brndNm") or "").split(">")[0].strip()
-    p["onlStckQy"] = info.get("stckQy") or hit.get("ONL_STCK_QY") or 0
+    p["onlStckQy"] = info["stckQy"] if "stckQy" in info else hit.get("ONL_STCK_QY")
+    p["soldOutYn"] = info.get("soldOutYn") or hit.get("soldOutYn")
+    p["_sourcing_assumption"] = "supplier_stock_not_gating"
+    p["_sourcing_assumed"] = True
     p["pdPrc"] = str(info.get("pdPrc") or hit.get("pdPrc") or "0")
     p["exhYn"] = info.get("exhYn") or "Y"
     p["pdImgUrlList"] = hit.get("pdImgUrlList") or hit.get("PD_IMG_URL_LIST") or ([hit["pdImgUrl"]] if hit.get("pdImgUrl") else [])
@@ -1493,7 +1517,7 @@ def live_s_priority(now=None):
 
     - 네트워크 호출 없음. 등급(S/A)은 정본 점수표가 유일한 권위이고, 이 계산은 순서만 바꾼다. 후보를 더하거나 빼지 않는다.
     - 전략/입력이 없거나 깨졌거나 정책이 일치하지 않으면 가짜 점수를 만들지 않고 정본 순서로 되돌아간다(status=fallback_canonical_order).
-    - 안전·가격 근거·이미지·재고·중복·인증 게이트는 건드리지 않는다. 이후 단계에서 그대로 적용된다.
+    - 안전·가격 근거·이미지·중복·인증 게이트는 건드리지 않는다. 이후 단계에서 그대로 적용된다.
     """
     as_of = now or datetime.now(timezone.utc)
     stamp = as_of.isoformat()
@@ -1648,7 +1672,8 @@ def pick(cat, shop, names, ids, reg, rows=None, excluded=None):
 #   "카테고리 메이크업 제품 등록에 S급 없으면 실시간 랭킹 메이크업 하나씩 등록되게"
 #   - 정본 S 등급은 바꾸지 않는다(grade_policy S 전용 그대로). 별도 출처의 '비공개 초안' 이다.
 #   - 메이크업에 등록 가능한 S 가 없을 때만, 랭킹 순서대로 하루 1개.
-#   - 품절·재고·중복·미국 판매 제약(선케어·미백 등)·가격 근거·고시·라벨 검사는 S 와 똑같다.
+#   - 중복·미국 판매 제약(선케어·미백 등)·가격 근거·고시·라벨 검사는 S 와 똑같다.
+#   - 공급처 온라인 품절·재고는 소싱 후보 차단이 아닌 원본 참고 정보로 보존한다.
 #   - 비비·쿠션·팩트·파운데이션은 이름에 SPF 가 없어도 자외선차단인 경우가 많다(1068733 이 그랬다).
 #     이 형태는 고시 전성분이 확인되고 자외선 차단 성분이 없을 때만 올린다.
 #   - 공개(ACTIVE)하지 않는다. 사람이 S 파이프라인(고시·라벨·법률)으로 확인해야 공개된다.
@@ -1714,9 +1739,6 @@ def pick_ranking(cat, shop, names, ids, reg, rows, excluded, skipped):
             continue
         excluded.add(pd_no)
         name = clean_name(row.get("pdNm") or "")
-        if row.get("soldOutYn") == "Y":
-            skipped.append({"pd_no": pd_no, "rank": row.get("_display_rank"), "reason": "sold_out"})
-            continue
         if is_non_core(name):
             skipped.append({"pd_no": pd_no, "rank": row.get("_display_rank"), "reason": "non_core"})
             continue
@@ -2467,6 +2489,7 @@ def main():
             # Exact source support never grants publication. The owner's
             # current workflow is prepare DRAFT, then owner activates.
             reasons = list(label["reasons"]) + [product_accuracy.HOLD_REASON]
+            reasons.extend(online_stock_draft_reasons(p))
             if pr.get("draft_only"):
                 reasons.append("market_price_unverified_cost_based_draft_only")
             if fallback_mode:
@@ -2540,6 +2563,11 @@ def main():
                 "category": cat[0],
                 "grade_required": grade_label(cat), "grade": p["_grade"], "s_candidates": s_candidate_count,
                 "selection_source": p.get("_source"),
+                "sourcing_assumed": True,
+                "sourcing_assumption": "supplier_stock_not_gating",
+                "supplier_stock_observation": {"soldOutYn": p.get("soldOutYn"),
+                                               "onlStckQy": p.get("onlStckQy"),
+                                               "state": online_stock_state(p)},
                 "selection_provenance": p.get("_priority") if fallback_mode else None,
                 "priority": p.get("_priority"),
                 "source": p.get("_source"),

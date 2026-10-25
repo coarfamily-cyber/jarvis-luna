@@ -527,19 +527,13 @@ def us_blockers(name: str, pd_no: str | None = None) -> tuple[str, str]:
 
 def qualify_s(name: str, bucket: str, total: int, matches: list,
               sold_out: bool = False, pd_no: str | None = None) -> tuple[bool, str]:
-    """S등급 점수/매칭 게이트. 현재 등록은 별도 최신 관측 검증이 필요하다.
+    """S등급 점수/매칭 게이트. 최신 관측/공개 검증은 별도다.
 
-    품절은 여기서 막는다.
-
-    09-09 에 S등급 1위 '드롭비 탄탄 광채 앰플' 이 품절 상태였다.
-    품절이어도 og:title 에 가격이 있어 파싱은 성공한다. 수집기가 성공
-    경로에서 품절을 안 읽었고 이 게이트도 재고를 보지 않았다.
-    살 수 없는 물건을 미국에 등록할 뻔했다.
-
-    품절은 되돌아오니 지우지 않는다. 등급만 내린다.
+    소싱 재판매 정책상 공급처 온라인 품절은 후보 차단에 사용하지 않는다.
+    원본 품절 관측은 보존하며 이 점수는 재고 보증이나 공개 허가가 아니다.
     """
-    if sold_out:
-        return False, "sold_out"
+    # Owner sourcing/resale policy: supplier online stock does not gate candidates.
+    # Preserve raw sold_out observations; this score never guarantees stock or publication.
     if is_non_core(name):
         return False, "non_core"
     kind, _why = us_blockers(name, pd_no)

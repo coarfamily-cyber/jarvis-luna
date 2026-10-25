@@ -1232,7 +1232,8 @@ class DailySafetyTests(unittest.TestCase):
         self.assertEqual(code, 0)
         record = result["results"][0]
         self.assertEqual(record["status"], "created_draft")  # Margins remain advisory; owner activates.
-        self.assertEqual(record["draft_reasons"], [daily.product_accuracy.HOLD_REASON])
+        self.assertEqual(record["draft_reasons"], [daily.product_accuracy.HOLD_REASON,
+                         "supplier_stock_not_gating_sourcing_assumption_draft_only"])
         self.assertEqual(record["profitability_warnings"], warnings)
         self.assertEqual(registry["items"][0]["status"], "DRAFT")
         self.assertEqual(registry["items"][0]["profitability_warnings"], warnings)
@@ -1973,7 +1974,7 @@ class BodyCategoryFallbackIntegrationTests(unittest.TestCase):
         shop.publish.assert_not_called()
         shop.publish_channels.assert_not_called()
 
-    def test_exhausted_s_stock_duplicates_price_and_safety_use_fallback(self):
+    def test_online_soldout_candidate_still_requires_current_s_evidence(self):
         rows = [{"pd_no": str(i), "grade": "S"} for i in range(8001, 8005)]
         def change(p):
             if p["pdNo"] == "8001":
@@ -1982,8 +1983,9 @@ class BodyCategoryFallbackIntegrationTests(unittest.TestCase):
         _, row, _, _ = self.run_body(s_rows=rows, detail_change=change,
             price_block=("8003",), safety_block=("8004",),
             registry={"items": [{"pd_no": "8002", "name_kr": "previous", "status": "deleted_by_owner"}]})
-        self.assertEqual(row["daiso_pdNo"], "9001")
+        self.assertEqual(row["daiso_pdNo"], "8001")
         self.assertEqual(row["s_candidates"], 4)
+        self.assertEqual(row["status"], "skipped_current_s_evidence_expired")
 
     def test_one_per_kst_day_cap(self):
         _, row, reg, shop = self.run_body(registry={"items": [
@@ -2032,7 +2034,7 @@ class BodyCategoryFallbackIntegrationTests(unittest.TestCase):
 
     def test_current_detail_unavailable_never_uses_source_price_or_stock(self):
         for change in (lambda p: None, lambda p: dict(p, _current_detail_available=False),
-                       lambda p: dict(p, pdPrc="0"), lambda p: dict(p, onlStckQy=0)):
+                       lambda p: dict(p, pdPrc="0")):
             with self.subTest(change=change):
                 _, row, reg, shop = self.run_body(detail_change=change)
                 self.assertEqual(row["fallback_reason"], "no_eligible_body_category_fallback")
@@ -2181,7 +2183,7 @@ class BodyCategoryFallbackIntegrationTests(unittest.TestCase):
     def test_real_lookup_requires_positive_current_detail_not_search_defaults(self):
         hit = {"pdNo": "9001", "pdNm": "Body 9001", "pdPrc": "3000", "soldOutYn": "N",
                "ONL_STCK_QY": 10, "pdImgUrl": "/body.jpg"}
-        for detail, expected in (({}, False), ({"pdPrc": 3000, "stckQy": 0}, False),
+        for detail, expected in (({}, False), ({"pdPrc": 3000, "stckQy": 0}, True),
                                  ({"pdPrc": 0, "stckQy": 10}, False),
                                  ({"pdPrc": 3000, "stckQy": 10, "exhYn": "N"}, False),
                                  ({"pdPrc": 3000, "stckQy": 10}, True)):

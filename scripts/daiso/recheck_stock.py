@@ -119,7 +119,6 @@ def main() -> int:
         row = by_no.get(pd_no)
         if row is None:
             continue
-        row["stock_checked_at"] = now_iso()
 
         if status != 200:
             errors.append({"pd_no": pd_no, "status": status})
@@ -130,6 +129,7 @@ def main() -> int:
         if item is None:
             info = dict(LAST_FAIL)
             if info.get("gone"):
+                row["stock_checked_at"] = now_iso()
                 row["gone"] = True
                 row["stock_note"] = "페이지에서 상품이 사라졌다"
                 gone.append(pd_no)
@@ -142,16 +142,19 @@ def main() -> int:
 
         row["gone"] = False
         was_price = row.get("price_krw")
-        row["sold_out"] = bool(item.get("sold_out"))
+        # Missing sold-out text is not evidence a previous shortage ended.
+        if item.get("sold_out") is True:
+            row["sold_out"] = True
+        row["stock_checked_at"] = item.get("stock_checked_at")
         row["stock_note"] = item.get("stock_note")
         if item.get("price_krw") and item["price_krw"] != was_price:
             row["price_krw_before"] = was_price
             row["price_krw"] = item["price_krw"]
             changed.append({"pd_no": pd_no, "before": was_price,
                             "after": item["price_krw"]})
-        if row["sold_out"]:
+        if item.get("sold_out") is True:
             soldout.append(pd_no)
-        mark = "품절" if row["sold_out"] else "판매 중"
+        mark = item.get("stock_note") or "판매 상태 확인 필요"
         print(f"  [{i}/{len(targets)}] {pd_no} {mark} "
               f"· {item.get('price_krw')}원 · {str(item.get('name'))[:24]}")
 
