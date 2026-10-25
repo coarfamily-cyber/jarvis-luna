@@ -106,7 +106,7 @@ EXPECTED = {'.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '63
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
  # Reviewed owner-audit home-card Pages bytes v2; all execution policies remain unchanged.
- '.github/workflows/owned-pages-once.yml': {'blob': '1eb6d179a166fbc462206b95b6505cd644873a98',
+ '.github/workflows/owned-pages-once.yml': {'blob': '45e66bbbd8eba0e6a7b9039eb8b71ee8c7720bdb',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},

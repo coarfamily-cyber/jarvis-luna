@@ -50,6 +50,7 @@ jobs:
       - name: Build only reviewed 36 public files and verify unchanged blocked status
         run: |
           node scripts/test_owner_audit.cjs
+          node scripts/test_owner_audit_failures.cjs
           python -B scripts/build_public_site.py --output dist --commit "$GITHUB_SHA"
           python -B scripts/check_public_site.py --root dist
           python -B - <<'PY'
@@ -74,7 +75,7 @@ jobs:
           assert 'quarantine_blocked_public:' in legacy
           manifest = json.loads(Path('dist/deployment.json').read_text())
           assert len(manifest['files']) == 36
-          assert manifest['site_hash'] == '8942d93c5a0bdc498861df55c7aac25811b6c6f5cad87546cbd75622f2f95638'
+          assert manifest['site_hash'] == '72b99055db501e31ad7863514fe5a59c7454cb8544f54319b425b2321951cc39'
           assert set(p.relative_to('dist').as_posix() for p in Path('dist').rglob('*') if p.is_file()) == set(manifest['files']) | {'deployment.json'}
           assert not any(p.is_symlink() for p in Path('dist').rglob('*'))
           for name, expected in manifest['files'].items():

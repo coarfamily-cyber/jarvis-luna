@@ -32,7 +32,7 @@ async function observe(){
  if(!SHA.test(b?.commit?.sha))throw Error('원장 커밋 미확인');
  const s=await readJson('https://raw.githubusercontent.com/'+REPO+'/'+b.commit.sha+'/.jarvis-owned-state.json');
  const [p2,w2,b2]=await Promise.all([readJson(API+'/actions/workflows/owned-core-local.yml/runs?per_page=1'),readJson(API+'/actions/workflows/owned-core-ledger-publisher.yml/runs?per_page=1'),readJson(API+'/branches/jarvis-owned-state')]);
- const identity=x=>JSON.stringify([x?.id,x?.run_attempt,x?.status,x?.conclusion,x?.updated_at]);
+ const identity=x=>JSON.stringify(run(x));
  if(b2?.commit?.sha!==b.commit.sha||identity(p2.workflow_runs?.[0])!==identity(p.workflow_runs?.[0])||identity(w2.workflow_runs?.[0])!==identity(w.workflow_runs?.[0]))throw Error('조회 중 실행 또는 원장이 변경됨. 다시 조회하세요.');
  return summarize(p.workflow_runs?.[0],w.workflow_runs?.[0],s,b,new Date().toISOString());
 }

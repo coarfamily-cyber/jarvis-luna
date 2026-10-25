@@ -458,6 +458,8 @@ def execute(root, task, ledger, *, approval=None, verifier=None, adapter=None, n
         result.update(completed_at=ended, ended_at=ended)
         for output in result['outputs']:
             output['captured_at'] = ended
+        # Final timestamps are evidence too: bind the bytes that will be persisted.
+        result['evidence_hash'] = digest(result['outputs'])
         result['receipt_hash'] = digest({k: v for k, v in result.items() if k != 'receipt_hash'})
         old.update(status='VERIFIED', receipt=result)
         persist(copy.deepcopy(ledger))
