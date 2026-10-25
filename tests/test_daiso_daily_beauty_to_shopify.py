@@ -173,7 +173,7 @@ class DailySafetyTests(unittest.TestCase):
     def test_verification_requires_images_variants_and_publication(self):
         shop = daily.Shopify.__new__(daily.Shopify)
         p = {"id": "p", "title": "Title", "status": "DRAFT", "publishedOnPublication": False,
-             "variants": {"nodes": [{"sku": "DS-1-1", "price": "9.99"}]},
+             "variants": {"nodes": [{"sku": "DS-1-1", "price": "9.99"}], "pageInfo": {"hasNextPage": False}},
              "media": {"nodes": [{"mediaContentType": "IMAGE", "status": "PROCESSING"}]}}
         shop.read_product = lambda product_id, pub: p
         item = {"title": "Title", "variants": [{"sku": "DS-1-1", "price": 9.99}], "images": ["image"]}
@@ -183,6 +183,96 @@ class DailySafetyTests(unittest.TestCase):
         self.assertEqual(daily.verify_product(shop, "p", item, "publication"), p)
         with self.assertRaisesRegex(RuntimeError, "status/publication"):
             daily.verify_product(shop, "p", item, "publication", published=True)
+
+    def test_duplicate_variant_rows_and_incomplete_readback_never_verify(self):
+        item = {'title': 'Synthetic draft', 'variants': [
+            {'sku': 'DS-123-1', 'price': 9.99}, {'sku': 'DS-123-2', 'price': 16.99}], 'images': []}
+        product = {'id': 'p', 'title': item['title'], 'status': 'DRAFT',
+                   'publishedOnPublication': False, 'variants': {'nodes': [
+                       {'sku': 'DS-123-1', 'price': '9.99'}, {'sku': 'DS-123-2', 'price': '16.99'}],
+                       'pageInfo': {'hasNextPage': False}}, 'media': {'nodes': []}}
+        shop = MagicMock(); shop.read_product.return_value = product
+        self.assertEqual(daily.verify_product(shop, 'p', item, 'pub'), product)
+        original = copy.deepcopy(product)
+        for duplicated in (0, 1):
+            bad = copy.deepcopy(original)
+            bad['variants']['nodes'].append(copy.deepcopy(bad['variants']['nodes'][duplicated]))
+            shop.read_product.return_value = bad
+            with self.assertRaisesRegex(RuntimeError, 'duplicate'):
+                daily.verify_product(shop, 'p', item, 'pub')
+        bad = copy.deepcopy(original); bad['variants']['pageInfo']['hasNextPage'] = True
+        shop.read_product.return_value = bad
+        with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+            daily.verify_product(shop, 'p', item, 'pub')
+        duplicate_plan = copy.deepcopy(item)
+        duplicate_plan['variants'].append(copy.deepcopy(item['variants'][0]))
+        bad = copy.deepcopy(original); bad['variants']['nodes'].append(copy.deepcopy(bad['variants']['nodes'][0]))
+        shop.read_product.return_value = bad
+        with self.assertRaisesRegex(RuntimeError, 'duplicate'):
+            daily.verify_product(shop, 'p', duplicate_plan, 'pub')
+        shop.create.assert_not_called(); shop.set_status.assert_not_called(); shop.publish.assert_not_called()
+        self.assertEqual(product, original)
+
+    def test_variant_verifier_rejects_unknown_schema_sku_price_and_pagination(self):
+        from decimal import Decimal
+        item = {'title': 'Synthetic draft', 'variants': [{'sku': 'DS-123-1', 'price': 9.99}], 'images': []}
+        product = {'id': 'p', 'title': item['title'], 'descriptionHtml': '<p>unchanged</p>',
+                   'status': 'DRAFT', 'publishedOnPublication': False,
+                   'variants': {'nodes': [{'sku': 'DS-123-1', 'price': '9.99'}],
+                                'pageInfo': {'hasNextPage': False}}, 'media': {'nodes': []}}
+        shop = MagicMock()
+        def rejects(actual, plan=None, product_id='p'):
+            before_actual, before_plan = copy.deepcopy(actual), copy.deepcopy(plan or item)
+            shop.read_product.return_value = actual
+            with self.assertRaises(RuntimeError):
+                daily.verify_product(shop, product_id, plan or item, 'pub')
+            self.assertEqual(actual, before_actual)
+            self.assertEqual(plan or item, before_plan)
+        for paging in (None, {}, {'hasNextPage': None}, {'hasNextPage': 0},
+                       {'hasNextPage': 'false'}, {'hasNextPage': True}):
+            with self.subTest(paging=paging):
+                actual = copy.deepcopy(product); actual['variants']['pageInfo'] = paging
+                rejects(actual)
+        actual = copy.deepcopy(product); del actual['variants']['pageInfo']; rejects(actual)
+        for rows in (None, [], {}, [None], ['invalid']):
+            actual = copy.deepcopy(product); actual['variants']['nodes'] = rows; rejects(actual)
+            plan = copy.deepcopy(item); plan['variants'] = rows; rejects(copy.deepcopy(product), plan)
+        for field, values in [('sku', (None, '', ' ', 123, True, ' DS-123-1')),
+                              ('price', (None, '', True, False, 0, -1, [], {},
+                                         'NaN', 'Infinity', '-Infinity', Decimal('NaN'), Decimal('Infinity')))]:
+            for value in values:
+                with self.subTest(field=field, value=str(value)):
+                    actual = copy.deepcopy(product); actual['variants']['nodes'][0][field] = value
+                    # NaN deliberately has no reflexive equality, so verify only
+                    # field presence rather than equality of that synthetic value.
+                    shop.read_product.return_value = actual
+                    with self.assertRaises(RuntimeError): daily.verify_product(shop, 'p', item, 'pub')
+                    plan = copy.deepcopy(item); plan['variants'][0][field] = value
+                    shop.read_product.return_value = product
+                    with self.assertRaises(RuntimeError): daily.verify_product(shop, 'p', plan, 'pub')
+        for key in ('sku', 'price'):
+            actual = copy.deepcopy(product); del actual['variants']['nodes'][0][key]; rejects(actual)
+            plan = copy.deepcopy(item); del plan['variants'][0][key]; rejects(copy.deepcopy(product), plan)
+        for identity in ('', ' ', None, False):
+            actual = copy.deepcopy(product); actual['id'] = identity; rejects(actual, product_id=identity)
+        for observed_publication in (None, 0, 'false'):
+            actual = copy.deepcopy(product); actual['publishedOnPublication'] = observed_publication; rejects(actual)
+        shop.create.assert_not_called(); shop.set_status.assert_not_called(); shop.publish.assert_not_called()
+
+    def test_variant_verifier_preserves_legitimate_pack_and_decimal_money(self):
+        from decimal import Decimal
+        item = {'title': 'Synthetic draft', 'variants': [
+            {'sku': 'DS-123-1', 'price': 9.99}, {'sku': 'DS-123-2', 'price': Decimal('16.99')}], 'images': ['unchanged']}
+        product = {'id': 'p', 'title': item['title'], 'descriptionHtml': '<p>unchanged source text</p>',
+                   'status': 'DRAFT', 'publishedOnPublication': False, 'variants': {'nodes': [
+                       {'sku': 'DS-123-2', 'price': '16.9900'}, {'sku': 'DS-123-1', 'price': '9.990'}],
+                       'pageInfo': {'hasNextPage': False}},
+                   'media': {'nodes': [{'mediaContentType': 'IMAGE', 'status': 'READY'}]}}
+        before_item, before_product = copy.deepcopy(item), copy.deepcopy(product)
+        shop = MagicMock(); shop.read_product.return_value = product
+        self.assertIs(daily.verify_product(shop, 'p', item, 'pub'), product)
+        self.assertEqual(item, before_item); self.assertEqual(product, before_product)
+        shop.create.assert_not_called(); shop.set_status.assert_not_called(); shop.publish.assert_not_called()
 
     def test_uncertain_create_reservation_blocks_remaining_categories(self):
         import os
@@ -340,7 +430,7 @@ class DailySafetyTests(unittest.TestCase):
                     "id": "gid://shopify/Product/123", "handle": "bonsep-serum",
                     "title": "Bonsep Serum 30 ml", "status": "DRAFT", "publishedOnPublication": False,
                     "variants": {"nodes": [{"sku": "DS-123-1", "price": "14.99"},
-                                           {"sku": "DS-123-2", "price": "25.99"}]},
+                                           {"sku": "DS-123-2", "price": "25.99"}], "pageInfo": {"hasNextPage": False}},
                     "media": {"nodes": [{"mediaContentType": "IMAGE", "status": "READY"}]}}
                 cwd = os.getcwd()
                 os.chdir(root)
@@ -1066,7 +1156,7 @@ class DailySafetyTests(unittest.TestCase):
             "id": "gid://shopify/Product/123", "handle": "bonsep-serum", "title": "Bonsep Serum 30 ml",
             "status": state["status"], "publishedOnPublication": state["published"],
             "variants": {"nodes": [{"sku": "DS-123-1", "price": f"{pricing['single']['price_usd'] or 0:.2f}"},
-                                    {"sku": "DS-123-2", "price": f"{pricing['pack']['price_usd'] or 0:.2f}"}]},
+                                    {"sku": "DS-123-2", "price": f"{pricing['pack']['price_usd'] or 0:.2f}"}], "pageInfo": {"hasNextPage": False}},
             "media": {"nodes": [{"mediaContentType": "IMAGE", "status": "READY"}]}}
         shop.set_status.side_effect = lambda pid, status: state.update(status=status)
         shop.publish.side_effect = lambda pid, pub: state.update(published=True)

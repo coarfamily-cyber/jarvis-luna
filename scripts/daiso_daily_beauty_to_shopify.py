@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 import copy
 import math
+from decimal import Decimal, InvalidOperation
 import os
 import re
 import sys
@@ -1978,12 +1979,48 @@ def backfill_banner(shop, products, registry, publication_id):
 
 def verify_product(shop, product_id, item, pub_id, published=False):
     p = shop.read_product(product_id, pub_id)
-    if not p or p["id"] != product_id or title_key(p["title"]) != title_key(item["title"]):
+    if (not isinstance(product_id, str) or not product_id.strip()
+            or not isinstance(p, dict) or p.get("id") != product_id
+            or not isinstance(item, dict) or not isinstance(item.get("title"), str)
+            or not item["title"].strip() or not isinstance(p.get("title"), str)
+            or title_key(p["title"]) != title_key(item["title"])):
         raise RuntimeError("Product read-back missing or title mismatch")
-    if p["status"] != ("ACTIVE" if published else "DRAFT") or bool(p["publishedOnPublication"]) != published:
+    if p.get("status") != ("ACTIVE" if published else "DRAFT") or p.get("publishedOnPublication") is not published:
         raise RuntimeError("Product status/publication mismatch")
-    actual = {(v.get("sku"), round(float(v["price"]), 2)) for v in p["variants"]["nodes"]}
-    expected = {(v["sku"], round(v["price"], 2)) for v in item["variants"]}
+    variants = p.get("variants")
+    if (not isinstance(variants, dict) or not isinstance(variants.get("pageInfo"), dict)
+            or variants["pageInfo"].get("hasNextPage") is not False):
+        raise RuntimeError("Variant pagination incomplete or unverified")
+
+    def variant_rows(rows):
+        if not isinstance(rows, list) or not rows:
+            raise RuntimeError("Variant rows missing or invalid")
+        result = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                raise RuntimeError("Variant row missing or invalid")
+            sku, price = row.get("sku"), row.get("price")
+            if (not isinstance(sku, str) or not sku.strip() or sku != sku.strip()
+                    or sku in result):
+                raise RuntimeError("Variant SKU missing, invalid, or duplicate")
+            if isinstance(price, bool) or not isinstance(price, (str, int, float, Decimal)):
+                raise RuntimeError("Variant price missing or invalid")
+            try:
+                amount = Decimal(str(price))
+                if not amount.is_finite() or amount <= 0:
+                    raise ValueError("invalid amount")
+                amount = amount.quantize(Decimal('0.01'))
+                if amount <= 0:
+                    raise ValueError("invalid normalized amount")
+            except (InvalidOperation, ValueError):
+                raise RuntimeError("Variant price missing or invalid") from None
+            result[sku] = amount
+        return result
+
+    # Keyed rows reject duplicates before comparison; set equality had hidden
+    # duplicate SKU/price rows and falsely verified ambiguous product creation.
+    actual = variant_rows(variants.get("nodes"))
+    expected = variant_rows(item.get("variants"))
     if actual != expected:
         raise RuntimeError("Variant SKU/price read-back mismatch")
     media = p["media"]["nodes"]
