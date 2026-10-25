@@ -504,6 +504,7 @@ nav a{font-size:12px;}
 </div>
 <div id="beauty-strategy" class="ops-note" aria-live="polite">3개 전문 카테고리 가격 전략 확인 중</div>
 <div id="daiso-panel"></div>
+<div id="fx-jpy" class="dz-note" aria-live="polite" style="font-size:12px;color:#8b949e;">엔화 환율 불러오는 중…</div>
 <div id="mt-health"></div>
 <div class="sd-summary" id="sd-summary">불러오는 중…</div>
 <ul class="sd-list" id="sd-list">
@@ -2419,6 +2420,26 @@ setInterval(renderDailyPipeline,300000);
       x.appendChild(left); x.appendChild(right); li.appendChild(x); ul.appendChild(li);
     });
   });
+})();
+</script>
+<script>
+/* 엔화 환율 (BUYMA 일본 판매용, 2026-10-25 사용자 요청).
+   위 '적용 환율'(KRW/USD)은 가격 계산에 고정된 값이라 건드리지 않는다. 이 줄은 표시 전용이다.
+   달러와 같은 출처(ExchangeRate-API open.er-api.com)를 브라우저가 열 때마다 읽는다. CORS 허용 실측.
+   못 읽으면 숫자를 지어내지 않고 실패라고 쓴다. */
+(async function(){
+  var box=document.getElementById('fx-jpy'); if(!box) return;
+  try{
+    var d=await getJSON('https://open.er-api.com/v6/latest/JPY');
+    var krw=d&&d.result==='success'&&d.rates?Number(d.rates.KRW):NaN;
+    if(!(krw>0)) throw new Error('KRW 값 없음');
+    var at=d.time_last_update_unix?new Date(d.time_last_update_unix*1000):null;
+    var when=at?at.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'시각 미상';
+    box.textContent='엔화 환율 ¥100 = ₩'+(krw*100).toLocaleString('ko-KR',{maximumFractionDigits:2})+
+      ' (¥1 = ₩'+krw.toLocaleString('ko-KR',{maximumFractionDigits:4})+') · ExchangeRate-API 기준 '+when+' · 표시 전용, 가격 계산 미반영';
+  }catch(e){
+    box.textContent='엔화 환율 조회 실패: '+(e&&e.message?e.message:String(e));
+  }
 })();
 </script>
 <script src="audit.js" defer></script>
