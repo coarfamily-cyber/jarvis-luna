@@ -78,7 +78,8 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install existing hash-pinned offline verification dependencies
-        run: python -m pip install --require-hashes -r requirements/requirements-verification.txt
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/requirements-verification.txt
       - name: Offline fixed-target regression checks before credentials
         env:
           PYTHONPATH: scripts
@@ -140,7 +141,8 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install existing hash-pinned verification dependencies
-        run: python -m pip install --require-hashes -r requirements/requirements-verification.txt
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/requirements-verification.txt
       - name: Offline source diagnostic regression checks
         env:
           PYTHONPATH: scripts

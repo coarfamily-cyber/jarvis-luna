@@ -24,7 +24,7 @@ EXPECTED = {'.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '63
  '.github/workflows/owned-technical-review-report.yml': {'blob': '19392daff1cf47e61b32940a988027316bae1d30', 'mode': '100644'},
  '.github/workflows/owned-fx-readonly-observation.yml': {'blob': '5f8c73fe7f8e0a77a47d944521ea617ef773a37d', 'mode': '100644'},
  '.github/workflows/owned-shopify-team-observation.yml': {'blob': '7375fe80e2d48d5d4b059da51b7cb7bb79176c47', 'mode': '100644'},
- '.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '580e51d80f6f3214324fd83b0b00c601df2dbc60', 'mode': '100644'},
+ '.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': 'fab975b4c3613713b242d3e48691fcc04b70f418', 'mode': '100644'},
  '.github/workflows/owned-core-ledger-publisher.yml': {'blob': '61e8b5dc58b8266d2bc6933a333c014b5564eb76', 'mode': '100644'},
  '.github/workflows/owned-core-local.yml': {'blob': 'e710850a60881dc705bd7e8b1467a780dfa42df6', 'mode': '100644'},
  '.github/workflows-quarantined/20261023/JARVIS-Core-Automation.yml': {'blob': '88281a6d915ae2defe085c21ca6a1d1a5b090655',

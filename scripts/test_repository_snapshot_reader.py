@@ -88,7 +88,9 @@ class SnapshotReaderTests(unittest.TestCase):
         from unittest.mock import Mock
         opener=Mock()
         opener.open.side_effect=r.http.client.IncompleteRead(b'untrusted-body-fragment')
-        with patch.object(r.urllib.request,'build_opener',return_value=opener):
+        # Exercise public HTTP framing, independent of the surrounding CI credentials.
+        with patch.dict(r.os.environ, {'GITHUB_ACTIONS': 'false'}), \
+             patch.object(r.urllib.request,'build_opener',return_value=opener):
             with self.assertRaises(p.ProvenanceError) as caught:
                 r._get(p.DESTINATION[0],'',r.time.monotonic()+10,1024)
         self.assertEqual(str(caught.exception),'snapshot_read_unavailable')

@@ -19,6 +19,40 @@ class Response:
     def read1(self,n):return self.body.read(n)
 
 class IndependentSnapshotReaderTests(unittest.TestCase):
+    def setUp(self):
+        # These fixtures test unauthenticated public transport, even on Actions.
+        environment = patch.dict(r.os.environ, {'GITHUB_ACTIONS': 'false'})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_ci_identity_and_token_guards_precede_transport(self):
+        identity = {'GITHUB_ACTIONS': 'true',
+                    'GITHUB_REPOSITORY': p.DESTINATION[0],
+                    'GITHUB_REPOSITORY_ID': str(p.DESTINATION[1]),
+                    'GITHUB_REPOSITORY_OWNER_ID': str(p.DESTINATION[2])}
+        cases = [({}, 'snapshot_runner_identity'),
+                 (identity, 'snapshot_runner_token'),
+                 ({**identity, 'GITHUB_TOKEN': 'bad token'}, 'snapshot_runner_token')]
+        for values, reason in cases:
+            with self.subTest(reason=reason), \
+                 patch.dict(r.os.environ, {'GITHUB_ACTIONS': 'true', **values}, clear=True), \
+                 patch.object(r.urllib.request, 'build_opener') as build:
+                with self.assertRaisesRegex(p.ProvenanceError, '^' + reason + '$'):
+                    r._get(p.DESTINATION[0], '', r.time.monotonic() + 10, 100)
+                build.assert_not_called()
+
+    def test_ci_bound_fixture_token_is_used_only_in_mocked_fixed_request(self):
+        identity = {'GITHUB_ACTIONS': 'true', 'GITHUB_REPOSITORY': p.DESTINATION[0],
+                    'GITHUB_REPOSITORY_ID': str(p.DESTINATION[1]),
+                    'GITHUB_REPOSITORY_OWNER_ID': str(p.DESTINATION[2]),
+                    'GITHUB_TOKEN': 'synthetic-offline-fixture'}
+        with patch.dict(r.os.environ, identity, clear=True):
+            value, opener = self.get(Response())
+        self.assertEqual(value, {})
+        request = opener.open.call_args.args[0]
+        self.assertEqual(request.get_header('Authorization'), 'Bearer synthetic-offline-fixture')
+        self.assertEqual(request.full_url, 'https://api.github.com/repos/' + p.LEGACY[0])
+
     def get(self,response,cap=100,clock=0):
         opener=Mock();opener.open.return_value=response
         with patch.object(r.urllib.request,'build_opener',return_value=opener) as build,patch.object(r.time,'monotonic',return_value=clock):
