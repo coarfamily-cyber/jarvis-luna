@@ -26,6 +26,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from scripts.gosi_observation_history import provider_stop_report
+
 DATA = ROOT / "data"
 OUT = DATA / "error_report.json"
 
@@ -159,15 +163,20 @@ def main() -> int:
 
     # 고시·비전
     gosi = load(DATA / "gosi.json") or {}
+    # Diagnostics only: no provider request, circuit mutation or authorization.
+    provider_status = {name: provider_stop_report(gosi, name)
+                       for name in ('daiso', 'gemini', 'oliveyoung')}
     for f in (gosi.get("auto_failures") or []):
         add("마케팅 조사팀", f.get("pd_no"), f.get("reason"), BROKEN)
     for f in (gosi.get("vision_failures") or []):
         add("마케팅 조사팀", f.get("pd_no"), f.get("reason"), BROKEN)
     for pd in (gosi.get("vision_deferred") or []):
-        stops = [s for s in (gosi.get("provider_stops") or []) if isinstance(s, dict)]
-        reason = ("공급자 중단 기록: " + ", ".join(
-            f"{s.get('provider')} HTTP {s.get('code')}" for s in stops
-        ) + " · 대기시간 경과 후 접근·할당량 복구 확인 필요") if stops else "이번 실행에서 판독 보류 · 다음 실행의 예산·접근 상태 확인 필요"
+        labels = {'known_stop_active': '기록된 대기시간 이내',
+                  'known_cooldown_elapsed': '기록된 대기시간 경과·접근 미검증',
+                  'unknown_history': '현재 이력 불충분'}
+        reason = "공급처별 기록: " + ", ".join(
+            f"{name}: {labels[state['state']]}" for name, state in provider_status.items()
+        ) + " · 요청 허용·연속성 검증을 뜻하지 않음"
         add("마케팅 조사팀", pd, reason, HELD)
 
     # 소싱 파싱 실패
@@ -219,6 +228,7 @@ def main() -> int:
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "generator": "scripts/build_error_report.py",
+        "provider_stop_diagnostics": provider_status,
         "구분": {
             BLOCKED: "robots.txt 나 규정 때문에 앞으로도 못 한다. 고칠 대상이 아니다",
             BROKEN: "됐어야 하는데 안 된다. 지금도 데이터가 안 들어온다. 고쳐야 한다",

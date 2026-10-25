@@ -141,6 +141,52 @@ def classify_stop(exc, provider):
 STOP_COOLDOWN_HOURS = {'auth': 24, 'quota': 24}
 
 
+def provider_stop_report(doc, provider, *, now=None):
+    """Pure diagnostic projection. Elapsed cooldown grants no access/continuity.
+
+    Never calls assert_not_stopped: that function moves expired records. Missing
+    records do not prove a healthy provider or complete post-interruption history.
+    """
+    instant = now or datetime.now(timezone.utc)
+    valid_now = isinstance(instant, datetime) and instant.tzinfo is not None
+    events, unknown = [], False
+    document = doc if isinstance(doc, dict) else {}
+    for key in ('provider_stops', 'provider_stop_history'):
+        rows = document.get(key, [])
+        if not isinstance(rows, list):
+            unknown = True
+            continue
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get('provider'), str):
+                unknown = True
+                continue
+            if row['provider'] != provider:
+                continue
+            item = {k: deepcopy(row.get(k)) for k in ('provider', 'code', 'category', 'stopped_at')}
+            state = 'unknown_history'
+            code, category = row.get('code'), row.get('category')
+            valid_code = type(code) is int and ((category == 'auth' and code in (401, 403, 407)) or (category == 'quota' and code == 429))
+            try:
+                at = datetime.fromisoformat(str(row.get('stopped_at')).replace('Z', '+00:00'))
+                if valid_now and at.tzinfo is not None and at <= instant and valid_code:
+                    age = (instant - at).total_seconds()
+                    state = ('known_cooldown_elapsed' if age >= STOP_COOLDOWN_HOURS[category] * 3600
+                             else 'known_stop_active')
+            except (TypeError, ValueError, OverflowError):
+                pass
+            item.update(state=state, record_location=key)
+            events.append(item)
+            unknown = unknown or state == 'unknown_history'
+    states = {e['state'] for e in events}
+    state = ('known_stop_active' if 'known_stop_active' in states else
+             'unknown_history' if unknown or not events else 'known_cooldown_elapsed')
+    return {'provider': provider, 'state': state, 'events': events,
+            'unknown_evidence': unknown or not events,
+            'history_completeness': 'not_established',
+            'request_authorized': False, 'continuity_verified': False,
+            'policy': 'existing_gosi_stop_cooldown_diagnostic_only'}
+
+
 def _stop_expired(stop, now):
     try:
         at = datetime.fromisoformat(str(stop.get('stopped_at')).replace('Z', '+00:00'))
