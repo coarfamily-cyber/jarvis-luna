@@ -41,7 +41,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import build_team_baselines as tb  # noqa: E402
 
 OUT = ROOT / "data" / "self_improve" / "team_history_evidence.json"
-REPO_URL = "https://github.com/coar0000-wq/jarvis-luna"
+REPO_URL = "https://github.com/coarfamily-cyber/jarvis-luna"
 KST = timezone(timedelta(hours=9))
 
 
