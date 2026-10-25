@@ -56,7 +56,7 @@ jobs:
           import hashlib, json
           from pathlib import Path
           active = sorted(p.name for p in Path('.github/workflows').rglob('*') if p.is_file() and p.suffix in {'.yml', '.yaml'})
-          assert active == ['owned-core-ledger-publisher.yml', 'owned-core-local.yml', 'owned-fx-readonly-observation.yml', 'owned-pages-once.yml', 'owned-repo-smoke.yml', 'owned-shopify-readonly-preflight.yml', 'owned-shopify-team-observation.yml', 'owned-technical-review-report.yml'], active
+          assert active == ['owned-core-ledger-publisher.yml', 'owned-core-local.yml', 'owned-fx-readonly-observation.yml', 'owned-pages-once.yml', 'owned-repo-smoke.yml', 'owned-shopify-readonly-preflight.yml', 'owned-shopify-team-observation.yml', 'owned-shopify-us-free-shipping.yml', 'owned-technical-review-report.yml'], active
           import sys
           sys.path.insert(0, 'scripts')
           from check_owned_workflow_policy import verify
@@ -74,7 +74,7 @@ jobs:
           assert 'quarantine_blocked_public:' in legacy
           manifest = json.loads(Path('dist/deployment.json').read_text())
           assert len(manifest['files']) == 36
-          assert manifest['site_hash'] == 'e60d5bd5d81e4c5e06d9928f903ab4a2e19782544c555603ae480694ec75878f'
+          assert manifest['site_hash'] == '8942d93c5a0bdc498861df55c7aac25811b6c6f5cad87546cbd75622f2f95638'
           assert set(p.relative_to('dist').as_posix() for p in Path('dist').rglob('*') if p.is_file()) == set(manifest['files']) | {'deployment.json'}
           assert not any(p.is_symlink() for p in Path('dist').rglob('*'))
           for name, expected in manifest['files'].items():

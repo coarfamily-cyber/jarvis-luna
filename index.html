@@ -441,7 +441,7 @@ nav a{font-size:12px;}
 </nav>
 <div class="live-indicator">
 <span class="live-dot"></span>
-<span id="live-text">LIVE</span>
+<span id="live-text">보존 자료</span>
 </div>
 </header>
 
@@ -461,6 +461,7 @@ nav a{font-size:12px;}
 <p><a href="https://github.com/coarfamily-cyber/jarvis-luna/actions/workflows/owned-core-local.yml">생산 실행 근거</a> · <a href="https://github.com/coarfamily-cyber/jarvis-luna/actions/workflows/owned-core-ledger-publisher.yml">원장 게시 근거</a> · <a href="https://github.com/coarfamily-cyber/jarvis-luna/tree/jarvis-owned-state">실제 원장</a> · <a href="audit.html">별도 감사 화면</a></p>
 <p>조회 실패·호출 한도는 미확인으로 표시합니다. 로그인 토큰·판매 쓰기·재실행 권한을 사용하지 않습니다.</p>
 </section>
+<aside class="dashboard-card" id="preserved-dashboard-notice" aria-label="보존 대시보드 안내"><strong>이 아래는 보존된 업무 자료 · 현재 실행 중 표시가 아닙니다.</strong><p id="preserved-dashboard-time">자료 기준 시각 확인 중 · 각 항목의 원래 수집 시각은 별도로 유지됩니다.</p><p>비서실장·팀 상태와 조치 후보는 저장 당시 기록입니다. 실제 배정·수신·처리 완료를 뜻하지 않으며, 위 Core 성공도 전체 자동화나 Shopify 자동 등록 완료를 뜻하지 않습니다.</p></aside>
 <!-- Hero -->
 <div class="hero">
 <div class="hero-text">
@@ -484,7 +485,7 @@ nav a{font-size:12px;}
 <!-- Team Cards -->
 <div class="team-section team-focus" id="teams"><span id="knowledge"></span>
 <h3><span class="team-h3"><img class="team-h3-img" src="images/jarvis.png" alt="JARVIS" width="40" height="40">JARVIS 팀 현황<span id="updated-at" class="team-h3-when">동기화 확인 중…</span></span><span id="team-updated" style="font-size:11px;letter-spacing:0;text-transform:none;color:#6e7681;"></span></h3>
-<div class="team-sub">각 팀의 현재 상태 · 경고 · 다음 조치를 한 곳에서 관리합니다.</div>
+<div class="team-sub">저장 당시 팀 상태 · 경고 · 조치 후보입니다. 현재 실행·수신·처리 완료는 별도 근거가 필요합니다.</div>
 <div class="team-meta" id="team-meta"></div>
 <div id="pipeline-health" class="team-sub" role="status">필수·선택 실행 증적 확인 중</div>
 <ul class="team-list" id="team-list">
@@ -1069,7 +1070,7 @@ if(healthEl){
 // 이제 generate_dashboard_runtime.py 의 secretary_card() 가 산출물이
 // 언제 바뀌었는지 재서 넣어준다. 값이 없으면 옛 문구로 되돌아간다.
 const sec = d.secretary || null;
-const secWhen = (sec && sec.when && teamWhen(sec.when)) || '상시';
+const secWhen = (sec && sec.when && teamWhen(sec.when)) || '기준 시각 미확인';
 const secSummary = (sec && sec.summary) ||
   'JARVIS 전체 팀·자동화·우선순위·예외상황을 총괄하고, 각 팀의 결과를 연결해 다음 실행 과제를 조정합니다.';
 const secBadge = (sec && sec.status==='failed')
@@ -1082,7 +1083,7 @@ function teamFlag(text, kind){
   const info=k==='informational';
   const cls=wait?' wait':(info?' info':'');
   const label=info?'현황':(k==='human_approval_required'?'사용자 승인·입력 대기':
-    (k==='external_dependency'?'외부 조건 대기':'비서실장 처리 중'));
+    (k==='external_dependency'?'외부 조건 대기':'보존된 조치 후보 · 실행 미확인'));
   return '<div><span class="team-action'+cls+'">← '+label+' · '+text+'</span></div>';
 }
 const secAct = (sec && sec.action)
@@ -1969,7 +1970,7 @@ function renderContinuityReview(review){
     && review.production_recovered===false && review.operations_execution_verified===false;
   const valid=contract && (pending || complete);
   const blocked=contract && review.status==='RESTRICTED_ANALYSIS_BLOCKED' && review.analyzed_at===null;
-  set('continuity-review-title',valid?(pending?'제한 분석 검증 대기 · 전체 자동화 복구 미완료':'저장 자료 제한 분석 완료 · 전체 자동화 복구 미완료'):'제한 운영 근거 불일치 · 상태 확인 필요');
+  set('continuity-review-title',valid?(pending?'제한 분석 검증 대기 · 전체 자동화 복구 미완료':'저장 자료 제한 분석 완료 · 전체 자동화 복구 미완료'):'보존 자료의 제한 운영 근거 불일치 · 현재 실행은 아래 감사에서 확인');
   set('continuity-review-detail',valid
     ? '실패 실행의 확인되지 않은 기록 공백을 유지합니다. Core·Deep의 이 제한 분석은 외부 수집·AI 호출·상품 변경을 실행하지 않습니다. 다른 독립 워크플로의 자료는 해당 실행의 근거로 따로 확인하며, 이 분석 완료가 새 수집 성공을 뜻하지 않습니다. 후속 보존 업로드 결과는 별도 확인이 필요합니다.'+(pending?' 제한 분석 실행 결과는 아직 없습니다.':' 분석 시각: '+KST(review.analyzed_at))
     : '현재 표시로 정상 운영이나 기록 연속성 회복을 확인할 수 없습니다.');
@@ -2010,7 +2011,8 @@ if(rt.status==='fulfilled'){
 const d=rt.value;
 window.__runtime = d;
 
-set('updated-at',KST(d.generated_at||d.last_synced)+' 동기화');
+set('updated-at',KST(d.generated_at||d.last_synced)+' 보존 자료');
+set('preserved-dashboard-time','보존 대시보드 생성 기준: '+KST(d.generated_at||d.last_synced)+' · 각 항목의 원래 수집 시각은 별도로 유지됩니다.');
 renderCumulative(d);
 renderMarketingChannels(d);
 if(d.graph) set('side-dangling',d.graph.dangling_links+'건');
@@ -2336,7 +2338,7 @@ async function renderDailyPipeline(){
   var lg=el('div','dp-legend'); [['#2f5bea','단계 완료'],['#e3b341','현재 확인 대기'],['#f85149','현재 보완 필요'],['#8b949e','이전 단계 대기']].forEach(function(x){ var s=el('span'); var b=el('b'); b.style.background=x[0]; s.appendChild(b); s.appendChild(document.createTextNode(x[1])); lg.appendChild(s); });
   if(grid.parentNode) grid.parentNode.insertBefore(lg, grid);
   function kpi(a,b){var k=el('div','dp-kpi'); k.appendChild(el('small',null,a)); k.appendChild(el('b',null,b)); kp.appendChild(k);}
-  kpi('실시간 공개 집계', '조회 안 함'); kpi('현재 표시 카드', String(grid.children.length)); kpi('등록 없음', String(none)); kpi('누적 이력', String(items.length));
+  kpi('현재 Shopify 공개 집계', '조회 안 함'); kpi('현재 표시 카드', String(grid.children.length)); kpi('등록 없음', String(none)); kpi('누적 이력', String(items.length));
   var dates=items.map(function(i){return i.date;}).filter(Boolean).sort();
   var lastDate=dates.length?dates[dates.length-1]:null;
   var observed=items.map(function(i){return observation(i);}).filter(Boolean).map(function(o){return o.observed_at;}).sort();

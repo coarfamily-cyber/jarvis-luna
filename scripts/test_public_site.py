@@ -299,9 +299,18 @@ for(const bad of [{...valid,status:'RESTRICTED_ANALYSIS_BLOCKED',analyzed_at:'in
         self.assertIn("' · 당시 이미지 '", html)
         self.assertNotIn("var st={ACTIVE:'공개',DRAFT:'초안'", html)
 
+    def test_preserved_dashboard_is_not_live_execution(self):
+        html = (self.root / 'index.html').read_text()
+        self.assertIn('이 아래는 보존된 업무 자료 · 현재 실행 중 표시가 아닙니다.', html)
+        self.assertIn('위 Core 성공도 전체 자동화나 Shopify 자동 등록 완료를 뜻하지 않습니다.', html)
+        self.assertIn("'보존된 조치 후보 · 실행 미확인'", html)
+        self.assertNotIn("'비서실장 처리 중'", html)
+        self.assertIn("set('preserved-dashboard-time','보존 대시보드 생성 기준: '+KST(d.generated_at||d.last_synced)", html)
+        self.assertIn("|| '기준 시각 미확인'", html)
+
     def test_daily_pipeline_does_not_present_old_or_missing_evidence_as_today_passed(self):
         html=(self.root/'index.html').read_text(encoding='utf-8')
-        self.assertIn("kpi('실시간 공개 집계', '조회 안 함')", html)
+        self.assertIn("kpi('현재 Shopify 공개 집계', '조회 안 함')", html)
         # 2026-10-11 사용자 지시: 성공 파랑 · 준비중 노랑(wait) · 에러 빨강. 증적이 없으면 '준비중'이지 통과가 아니다.
         self.assertNotIn("legalBad?'bad':(live?'done':'wait')", html)
         self.assertIn("legalBad?'bad':'wait'", html)

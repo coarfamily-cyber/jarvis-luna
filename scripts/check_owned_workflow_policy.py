@@ -19,7 +19,9 @@ PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
 SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
 # Reviewed manual-only fresh catalog observation; no new schedule or writer.
-EXPECTED = {'.github/workflows/owned-technical-review-report.yml': {'blob': '19392daff1cf47e61b32940a988027316bae1d30', 'mode': '100644'},
+# Existing owner-authorized manual shipping lane; registration is not execution approval.
+EXPECTED = {'.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '635d1c38d25d8395af84e04a7c33d5c371009a1b', 'mode': '100644'},
+ '.github/workflows/owned-technical-review-report.yml': {'blob': '19392daff1cf47e61b32940a988027316bae1d30', 'mode': '100644'},
  '.github/workflows/owned-fx-readonly-observation.yml': {'blob': '5f8c73fe7f8e0a77a47d944521ea617ef773a37d', 'mode': '100644'},
  '.github/workflows/owned-shopify-team-observation.yml': {'blob': '7375fe80e2d48d5d4b059da51b7cb7bb79176c47', 'mode': '100644'},
  '.github/workflows/owned-shopify-readonly-preflight.yml': {'blob': '580e51d80f6f3214324fd83b0b00c601df2dbc60', 'mode': '100644'},
@@ -104,7 +106,7 @@ EXPECTED = {'.github/workflows/owned-technical-review-report.yml': {'blob': '193
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
  # Reviewed owner-audit home-card Pages bytes v2; all execution policies remain unchanged.
- '.github/workflows/owned-pages-once.yml': {'blob': '27aa39c22c16fc2712f941385ef6904f9294d3e0',
+ '.github/workflows/owned-pages-once.yml': {'blob': '1eb6d179a166fbc462206b95b6505cd644873a98',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},
@@ -177,6 +179,24 @@ def verify(root):
                     if (doc.get('permissions') != {} or set(jobs) != {'publish'} or
                             jobs['publish'].get('permissions') != {'contents': 'write', 'actions': 'read'}):
                         raise ValueError('writer_job_only_permissions_required')
+                elif path.name == 'owned-shopify-us-free-shipping.yml':
+                    # Preserve the exact pre-existing manual check/apply surface.
+                    # Do not turn this inventory repair into broader writer authority.
+                    expected_inputs = {
+                        'expected_sha': {'description': 'Exact reviewed main commit', 'required': True, 'type': 'string'},
+                        'mode': {'description': 'check reads only; apply changes only when K-Packet checkout shipping is not $0',
+                                 'required': True, 'default': 'check', 'type': 'choice', 'options': ['check', 'apply']}}
+                    jobs = doc.get('jobs', {})
+                    job = jobs.get('us_free_shipping', {})
+                    if (event != {'workflow_dispatch': {'inputs': expected_inputs}} or
+                            doc.get('permissions') != {'contents': 'read'} or
+                            set(jobs) != {'us_free_shipping'} or 'permissions' in job or
+                            job.get('environment') != 'jarvis-shopify-writer' or
+                            job.get('if') != "github.repository == 'coarfamily-cyber/jarvis-luna' && github.ref == 'refs/heads/main' && inputs.expected_sha == github.sha" or
+                            job.get('timeout-minutes') != 5 or
+                            doc.get('concurrency') != {'group': 'owned-shopify-us-free-shipping', 'cancel-in-progress': False}):
+                        raise ValueError('exact_existing_shipping_manual_policy_required')
+                    manual_docs.append(rel)
                 elif path.name == 'owned-shopify-readonly-preflight.yml':
                     expected_inputs = {
                         'expected_sha': {'description': 'Exact reviewed main commit', 'required': True, 'type': 'string'},

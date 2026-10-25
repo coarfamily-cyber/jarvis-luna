@@ -21,7 +21,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
     def test_actual_checkout(self):
         result=policy.verify(ROOT)
         self.assertEqual(result['active_schedules'], 0 if policy.STAGE == policy.MANUAL_STAGE else 1)
-        self.assertEqual(len(result['active_manual_workflows']), 7 if policy.STAGE == policy.MANUAL_STAGE else 6)
+        self.assertEqual(len(result['active_manual_workflows']), 8 if policy.STAGE == policy.MANUAL_STAGE else 7)
         self.assertEqual(result['archived_workflows'],30)
         self.assertFalse(result['production_recovered'])
     def test_exact_v3_active_set(self):
@@ -35,7 +35,38 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             '.github/workflows/owned-repo-smoke.yml',
             '.github/workflows/owned-shopify-readonly-preflight.yml',
             '.github/workflows/owned-shopify-team-observation.yml',
-            '.github/workflows/owned-technical-review-report.yml'])
+            '.github/workflows/owned-shopify-us-free-shipping.yml', '.github/workflows/owned-technical-review-report.yml'])
+    def test_existing_shipping_lane_preserved_exactly(self):
+        path = ROOT / '.github/workflows/owned-shopify-us-free-shipping.yml'
+        import hashlib
+        raw = path.read_bytes()
+        self.assertEqual(hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest(),
+                         '635d1c38d25d8395af84e04a7c33d5c371009a1b')
+        doc = yaml.safe_load(raw)
+        self.assertEqual(set(doc.get('on', doc.get(True))), {'workflow_dispatch'})
+        self.assertEqual(doc['permissions'], {'contents': 'read'})
+        steps = doc['jobs']['us_free_shipping']['steps']
+        self.assertEqual(steps[0]['with']['persist-credentials'], False)
+        self.assertEqual(steps[0]['with']['ref'], '${{ github.sha }}')
+        self.assertNotIn('secrets.', str(steps[2]))
+        self.assertEqual(steps[3]['env']['APPLY'], "${{ inputs.mode == 'apply' && '1' || '0' }}")
+        self.assertEqual(steps[3]['run'], 'python -B scripts/shopify_us_free_shipping.py')
+
+    def test_existing_shipping_mutations_rejected(self):
+        path = self.root / '.github/workflows/owned-shopify-us-free-shipping.yml'
+        original = path.read_text()
+        for old, new in [('default: check', 'default: apply'),
+                         ('contents: read', 'contents: write'),
+                         ('inputs.expected_sha == github.sha', 'true'),
+                         ('options: [check, apply]', 'options: [check, apply, all]'),
+                         ("inputs.mode == 'apply' && '1' || '0'", "'1'"),
+                         ('timeout-minutes: 5', 'timeout-minutes: 60')]:
+            with self.subTest(mutation=old):
+                path.write_text(original.replace(old, new))
+                with self.assertRaises(ValueError):
+                    policy.verify(self.root)
+        path.write_text(original)
+
     def test_pages_exact_inventory_matches_policy(self):
         # Keep Pages literal allowlist and exact fingerprint policy synchronized.
         doc = yaml.safe_load((ROOT / '.github/workflows/owned-pages-once.yml').read_text())
