@@ -1,4 +1,5 @@
 """Adversarial fixtures; optional supplied TMP evidence, never production data/GitHub."""
+from workflow_contract_fixtures import archived_workflow
 import copy
 import io
 import json
@@ -96,7 +97,7 @@ class RestoreTests(unittest.TestCase):
         self.assertEqual(restore.verify_current(self.root), self.current)
 
     def test_fx_workflow_binds_continuity_and_retains_history(self):
-        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/fx-refresh.yml').read_text(encoding='utf-8')
+        workflow = (archived_workflow('fx-refresh.yml')).read_text(encoding='utf-8')
         self.assertIn('actions: read', workflow)
         self.assertLess(workflow.index('id: operations_safety'), workflow.index('uses: ./.github/actions/publish'))
         self.assertIn("if: steps.operations_safety.outputs.operations_continuity == 'verified'", workflow)
@@ -419,7 +420,7 @@ class ReviewedAbortTests(unittest.TestCase):
         self.assertFalse((self.root/restore.PENDING).exists())
 
     def test_future_retention_requires_verified_restore_not_runtime(self):
-        raw=(Path(__file__).resolve().parents[1]/'.github/workflows/JARVIS-Core-Automation.yml').read_text(encoding='utf-8')
+        raw=(archived_workflow('JARVIS-Core-Automation.yml')).read_text(encoding='utf-8')
         retention=raw[raw.index('      - name: Retain immutable operations safety history'):]
         self.assertIn("steps.operations_safety.outcome == 'success'",retention)
         self.assertIn("steps.operations_retention.outputs.operations_continuity == 'verified'",retention)

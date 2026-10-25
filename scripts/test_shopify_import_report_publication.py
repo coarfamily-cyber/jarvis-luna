@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline regression tests. Only temporary fixtures, no network or Git commits."""
+from workflow_contract_fixtures import archived_workflow
 import io
 import json
 import sys
@@ -206,7 +207,7 @@ class ImportReportPublicationTests(unittest.TestCase):
             self.record()
 
     def test_offline_verification_disables_model_paths_only_when_requested(self):
-        workflow = (ROOT / ".github/workflows/shopify-listing-copy.yml").read_text(encoding="utf-8")
+        workflow = (archived_workflow('shopify-listing-copy.yml')).read_text(encoding="utf-8")
         self.assertIn("      offline_verification:\n        description:", workflow)
         dispatch_input = workflow.split("      offline_verification:\n", 1)[1].split("  # S등급", 1)[0]
         for required in ("type: boolean", "required: false", "default: false"):
@@ -221,7 +222,7 @@ class ImportReportPublicationTests(unittest.TestCase):
             self.assertIn(command, workflow)
 
     def test_workflow_rescores_current_policy_before_copy_and_price(self):
-        workflow = (ROOT / ".github/workflows/shopify-listing-copy.yml").read_text(encoding="utf-8")
+        workflow = (archived_workflow('shopify-listing-copy.yml')).read_text(encoding="utf-8")
         marker = "      - name: 현재 정책으로 S등급 정본 재생성\n"
         self.assertIn(marker, workflow)
         rescore = workflow.split(marker, 1)[1].split("      - name:", 1)[0]
@@ -237,7 +238,7 @@ class ImportReportPublicationTests(unittest.TestCase):
         self.assertIn("uses: ./.github/actions/publish", workflow)
 
     def test_workflow_records_after_generation_before_publish(self):
-        workflow = (ROOT / ".github/workflows/shopify-listing-copy.yml").read_text(encoding="utf-8")
+        workflow = (archived_workflow('shopify-listing-copy.yml')).read_text(encoding="utf-8")
         self.assertLess(workflow.index("python scripts/build_shopify_import_csv.py"), workflow.index("--record-publication"))
         self.assertLess(workflow.index("--record-publication"), workflow.index("uses: ./.github/actions/publish"))
 

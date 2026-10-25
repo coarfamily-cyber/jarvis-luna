@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """No network, providers, AI, products, or real operations actions in these tests."""
+from workflow_contract_fixtures import archived_workflow
 import copy
 from datetime import datetime, timedelta, timezone
 import json
@@ -422,7 +423,7 @@ class WorkflowContractTests(unittest.TestCase):
         cls.root = Path(__file__).resolve().parents[1]
         cls.workflows = []
         for name in ('JARVIS-Core-Automation.yml', 'JARVIS-Deep-Analysis.yml'):
-            document = yaml.safe_load((cls.root / '.github/workflows' / name).read_text())
+            document = yaml.safe_load((archived_workflow(name)).read_text())
             cls.workflows.append((name, next(iter(document['jobs'].values()))))
 
     def test_every_effect_and_normal_retention_is_mode_gated(self):

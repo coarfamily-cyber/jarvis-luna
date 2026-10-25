@@ -30,7 +30,7 @@ class CheckpointAdversarialTests(unittest.TestCase):
         self.addCleanup(self.fixture.doCleanups)
         # The old writer is quarantined. Recreate its hash input ONLY in a
         # temporary historical fixture; never activate a repository workflow.
-        source = Path(draft.__file__).resolve().parents[1]
+        source = self.fixture.production_source_root
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)

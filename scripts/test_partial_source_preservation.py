@@ -1,4 +1,5 @@
 """Offline regressions for Deep 39315235823 and SerpApi 39340538828."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 import hashlib
 import importlib.util
@@ -161,7 +162,7 @@ class OfflineTests(unittest.TestCase):
 
     def test_youtube_workflow_reports_tolerated_failure_after_publication(self):
         import yaml
-        workflow = yaml.safe_load((ROOT / '.github/workflows/serpapi-market.yml').read_text())
+        workflow = yaml.safe_load((archived_workflow('serpapi-market.yml')).read_text())
         steps = workflow['jobs']['collect']['steps']
         youtube = next(step for step in steps if step.get('id') == 'youtube')
         self.assertTrue(youtube['continue-on-error'])

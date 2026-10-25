@@ -1,4 +1,5 @@
 """Offline assignment preservation; generated feed rows are never work receipts."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 import contextlib
 import io
@@ -31,7 +32,7 @@ def briefing(**updates):
 
 class BriefingFeedTests(unittest.TestCase):
     def test_preflight_runs_all_sales_regressions(self):
-        path = Path(__file__).resolve().parents[1] / ".github/workflows/preflight.yml"
+        path = archived_workflow('preflight.yml')
         workflow = path.read_text(encoding="utf-8")
         for filename in ("test_beauty_price_strategy.py", "test_checkout_price_evidence.py",
                          "test_team_briefing_feeds.py"):

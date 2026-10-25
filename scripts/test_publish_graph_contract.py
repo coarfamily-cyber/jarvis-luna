@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Isolated fail-closed fixtures for graph expansion of the publish transaction."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -167,7 +168,7 @@ class PublishContractTests(unittest.TestCase):
         policy = self.contract()
         for filename in ('JARVIS-Core-Automation.yml', 'JARVIS-Deep-Analysis.yml'):
             with self.subTest(filename=filename):
-                text = (ROOT / '.github/workflows' / filename).read_text()
+                text = (archived_workflow(filename)).read_text()
                 profiles = graph._transaction_profiles(text, policy, {})
                 restricted = next(p for p in profiles if p['publication_profile'] == 'restricted_gap')
                 normal = next(p for p in profiles if p['publication_profile'] != 'restricted_gap')

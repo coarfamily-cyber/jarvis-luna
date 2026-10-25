@@ -1,4 +1,5 @@
 """Offline checks: local AEO drafts never imply publication or mutate Shopify."""
+from workflow_contract_fixtures import archived_workflow
 import ast
 from contextlib import ExitStack, redirect_stdout
 import copy
@@ -290,14 +291,14 @@ class AeoInspectionTests(unittest.TestCase):
         self.assertNotIn('private-', json.dumps(aeo.public_readiness_summary({'status': 'private-status', 'reason': 'private-reason'})))
 
     def test_workflow_is_main_only_and_inspection_only(self):
-        text = (ROOT / ".github/workflows/shopify-aeo-apply.yml").read_text(encoding="utf-8")
+        text = (archived_workflow('shopify-aeo-apply.yml')).read_text(encoding="utf-8")
         for required in ("if: github.ref == 'refs/heads/main'", "ref: main", "APPLY: '0'", "options: ['0']"):
             self.assertIn(required, text)
 
     def test_regression_is_registered_in_both_verification_workflows(self):
         for filename in ("preflight.yml", "pages-verified.yml"):
             with self.subTest(workflow=filename):
-                text = (ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
+                text = (archived_workflow(filename)).read_text(encoding="utf-8")
                 self.assertEqual(text.count("scripts/test_shopify_aeo_inspection.py"), 1)
 
 

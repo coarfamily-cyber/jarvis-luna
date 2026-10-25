@@ -2,6 +2,7 @@
 from pathlib import Path
 import unittest
 import yaml
+from workflow_contract_fixtures import archived_workflow
 from run_commerce_pipeline import commands, ROOT
 
 
@@ -16,7 +17,7 @@ class CommercePipelineTests(unittest.TestCase):
         self.assertIn(['scripts/discover_channels.py', '--cached-only'], rows)
 
     def test_core_refreshes_after_sources_before_runtime(self):
-        text = (ROOT / '.github/workflows/JARVIS-Core-Automation.yml').read_text(encoding='utf-8')
+        text = (archived_workflow('JARVIS-Core-Automation.yml')).read_text(encoding='utf-8')
         self.assertLess(text.index('Bounded existing-team source recovery'), text.index('Required canonical source processing'))
         self.assertLess(text.index('scripts/run_commerce_pipeline.py'), text.index('Required current canonical runtime'))
 
@@ -24,14 +25,14 @@ class CommercePipelineTests(unittest.TestCase):
         expected = ['python', '-u', 'scripts/export_shopify_operational.py', '--blocked-noop']
         for workflow in ('gosi-vision.yml', 'gosi-alt.yml'):
             with self.subTest(workflow=workflow):
-                text = (ROOT / '.github/workflows' / workflow).read_text(encoding='utf-8')
+                text = (archived_workflow(workflow)).read_text(encoding='utf-8')
                 calls = [line.strip().split() for line in text.splitlines()
                          if line.strip().startswith('python -u scripts/export_shopify_operational.py')]
                 self.assertEqual(calls, [expected])
 
     def test_listing_copy_only_triggers_on_main_canonical_updates(self):
         workflow = yaml.load(
-            (ROOT / '.github/workflows/shopify-listing-copy.yml').read_text(encoding='utf-8'),
+            (archived_workflow('shopify-listing-copy.yml')).read_text(encoding='utf-8'),
             Loader=yaml.BaseLoader,
         )
         self.assertEqual(workflow['on']['push']['branches'], ['main'])
@@ -41,7 +42,7 @@ class CommercePipelineTests(unittest.TestCase):
 
     def test_listing_copy_manual_and_push_jobs_are_main_only(self):
         workflow = yaml.load(
-            (ROOT / '.github/workflows/shopify-listing-copy.yml').read_text(encoding='utf-8'),
+            (archived_workflow('shopify-listing-copy.yml')).read_text(encoding='utf-8'),
             Loader=yaml.BaseLoader,
         )
         # Preserve the offline source-recovery exclusion inside the main guard.
@@ -56,13 +57,13 @@ class CommercePipelineTests(unittest.TestCase):
         self.assertEqual(workflow['concurrency']['cancel-in-progress'], 'false')
 
     def test_deep_uses_same_complete_chain(self):
-        text = (ROOT / '.github/workflows/JARVIS-Deep-Analysis.yml').read_text(encoding='utf-8')
+        text = (archived_workflow('JARVIS-Deep-Analysis.yml')).read_text(encoding='utf-8')
         stage = text.split("cat > \"$RUNNER_TEMP/deep_41.sh\" <<'RELEASE_STAGE_deep_41'", 1)[1].split('RELEASE_STAGE_deep_41', 1)[0]
         self.assertIn('scripts/run_commerce_pipeline.py', stage)
 
     def test_deep_records_copy_history_before_export_captures_its_bytes(self):
         workflow = yaml.load(
-            (ROOT / '.github/workflows/JARVIS-Deep-Analysis.yml').read_text(encoding='utf-8'),
+            (archived_workflow('JARVIS-Deep-Analysis.yml')).read_text(encoding='utf-8'),
             Loader=yaml.BaseLoader,
         )
         steps = next(iter(workflow['jobs'].values()))['steps']

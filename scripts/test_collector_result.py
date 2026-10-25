@@ -1,3 +1,4 @@
+from workflow_contract_fixtures import archived_workflow
 #!/usr/bin/env python3
 import json
 import os
@@ -215,7 +216,7 @@ class RestrictedAggregateTests(unittest.TestCase):
     def test_every_declared_normal_required_stage_stays_required(self):
         import re
         for workflow in ('JARVIS-Core-Automation.yml', 'JARVIS-Deep-Analysis.yml'):
-            text = (ROOT / '.github/workflows' / workflow).read_text()
+            text = (archived_workflow(workflow)).read_text()
             names = sorted(set(re.findall(r'--expected ([a-zA-Z0-9_]+):required', text)))
             self.assertTrue(names)
             with tempfile.TemporaryDirectory() as folder:

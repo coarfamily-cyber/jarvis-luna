@@ -3,6 +3,7 @@
 OCR(tesseract) 이 없는 환경에서도 도는 부분만 기본으로 검사하고, 한글 OCR 이 있으면
 합성 이미지로 '한글을 지우고 영문을 얹은 뒤 다시 읽어 한글이 남지 않는다' 까지 본다.
 """
+from workflow_contract_fixtures import archived_workflow
 import io
 import hashlib
 import http.client
@@ -451,11 +452,17 @@ class ReviewArtifactTest(unittest.TestCase):
         self.assertEqual(first["sources"][0]["source_file"], second["sources"][0]["source_file"])
         self.assertEqual(len(list(self.out.glob("source-*.bin"))), 1)
 
-    def assert_review_upload_pin(self, section, manifest):
+    def assert_review_upload_pin(self, section, manifest, *, archived_ref=None):
         # The reviewed manifest owns the pin. Do not copy another release SHA here,
         # or silently accept multiple (possibly stale) upload-artifact approvals.
         repository = "actions/upload-artifact"
         rows = [row for row in manifest["actions"] if row["repository"] == repository]
+        if archived_ref is not None:
+            # The archived YAML is already bound to the quarantine blob hash.
+            # Current manifests can retain more than one reviewed release; bind
+            # this historical contract to exactly one matching approved record.
+            self.assertRegex(archived_ref, r'\Aactions/upload-artifact@[0-9a-f]{40}\Z')
+            rows = [row for row in rows if f"{repository}@{row['sha']}" == archived_ref]
         self.assertEqual(len(rows), 1, "Require one authoritative upload-artifact approval")
         row = rows[0]
         self.assertRegex(row["sha"], r"\A[0-9a-f]{40}\Z")
@@ -493,12 +500,30 @@ class ReviewArtifactTest(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(AssertionError):
                 self.assert_review_upload_pin(section, {"actions": [dict(row, **changes)]})
 
+    def test_archived_pin_requires_unique_matching_approved_version(self):
+        repository = 'actions/upload-artifact'
+        def row(digest, tag):
+            return dict(repository=repository, sha=digest, type='commit', tag=tag,
+                        ref=f'{repository}@{tag}',
+                        source=f'https://api.github.com/repos/{repository}/git/ref/tags/{tag}')
+        old, current = row('1'*40, 'v-old'), row('2'*40, 'v-current')
+        ref = repository+'@'+'1'*40
+        section = '        uses: '+ref+'\n'
+        self.assert_review_upload_pin(section, {'actions':[old, current]}, archived_ref=ref)
+        for rows in ([current], [old, old, current]):
+            with self.subTest(rows=rows), self.assertRaises(AssertionError):
+                self.assert_review_upload_pin(section, {'actions':rows}, archived_ref=ref)
+        with self.assertRaises(AssertionError):
+            self.assert_review_upload_pin(section, {'actions':[old, current]}, archived_ref=repository+'@'+'2'*40)
+
     def test_workflow_preserves_only_review_assets_always_for_30_days(self):
-        workflow = (HERE.parent / ".github/workflows/daiso-daily-beauty-shopify.yml").read_text(encoding="utf-8")
+        workflow = (archived_workflow('daiso-daily-beauty-shopify.yml')).read_text(encoding="utf-8")
         section = workflow.split("      - name: 상세 이미지 검토 자산 보관\n", 1)[1].split("      - name:", 1)[0]
         self.assertIn("if: ${{ always() }}", section)
         manifest = json.loads((HERE.parent / "requirements/lock-manifest.json").read_text(encoding="utf-8"))
-        self.assert_review_upload_pin(section, manifest)
+        archived_refs = re.findall(r"(?m)^\s*uses:\s*([^\s#]+)", section)
+        self.assertEqual(len(archived_refs), 1)
+        self.assert_review_upload_pin(section, manifest, archived_ref=archived_refs[0])
         self.assertIn("name: daiso-daily-beauty-image-review", section)
         self.assertIn("retention-days: 30", section)
         paths = section.split("          path: |\n", 1)[1].split("          if-no-files-found:", 1)[0]

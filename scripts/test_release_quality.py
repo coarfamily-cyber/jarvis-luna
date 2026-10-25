@@ -1,3 +1,4 @@
+from workflow_contract_fixtures import archived_workflow
 #!/usr/bin/env python3
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -144,7 +145,7 @@ class QualityTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     def test_core_synthetic_collectors_not_run(self):
-        text=(ROOT/'.github/workflows/JARVIS-Core-Automation.yml').read_text(encoding='utf-8')
+        text=(archived_workflow('JARVIS-Core-Automation.yml')).read_text(encoding='utf-8')
         self.assertNotIn('python scripts/google_search_data_collection.py',text)
         self.assertNotIn('python scripts/obsidian_realtime_sync.py',text)
         self.assertIn('--skip-reason',text)
@@ -152,7 +153,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(text.index('Required candidate release quality'),text.index('uses: ./.github/actions/publish'))
 
     def test_deep_outcomes_gate_precedes_publish_no_post_publish_threshold(self):
-        text=(ROOT/'.github/workflows/JARVIS-Deep-Analysis.yml').read_text(encoding='utf-8')
+        text=(archived_workflow('JARVIS-Deep-Analysis.yml')).read_text(encoding='utf-8')
         self.assertLess(text.index('Aggregate actual Deep outcomes'),text.index('uses: ./.github/actions/publish'))
         self.assertNotIn('failed_steps.txt || true',text)
         self.assertNotIn('if [ "$count" -ge 5 ]',text)
@@ -160,7 +161,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_workflows_parse_and_have_explicit_quality_conditions(self):
         for name in ('JARVIS-Core-Automation.yml','JARVIS-Deep-Analysis.yml'):
-            doc=yaml.safe_load((ROOT/'.github/workflows'/name).read_text(encoding='utf-8'))
+            doc=yaml.safe_load((archived_workflow(name)).read_text(encoding='utf-8'))
             steps=next(iter(doc['jobs'].values()))['steps']
             publication=next(s for s in steps if s.get('uses')=='./.github/actions/publish')
             self.assertIn("outcome == 'success'",publication['if'])

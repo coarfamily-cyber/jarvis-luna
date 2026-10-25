@@ -1,4 +1,5 @@
 """Offline snapshot/collector publication adversaries, only local Git remotes."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 from contextlib import redirect_stdout
 import hashlib
@@ -104,7 +105,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_daiso_publication_paths_preserve_complete_operations_snapshot(self):
         import yaml
-        workflow = yaml.load((ROOT / '.github/workflows/daiso-real-collection.yml').read_text(),
+        workflow = yaml.load((archived_workflow('daiso-real-collection.yml')).read_text(),
                              Loader=yaml.BaseLoader)
         publishers = [step for step in workflow['jobs']['collect']['steps']
                       if step.get('uses') == './.github/actions/publish']

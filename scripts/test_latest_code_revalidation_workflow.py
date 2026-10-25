@@ -3,9 +3,10 @@ import unittest
 from pathlib import Path
 
 import yaml
+from workflow_contract_fixtures import archived_workflow
 
 ROOT = Path(__file__).resolve().parents[1]
-PATH = ROOT / '.github/workflows/latest-code-revalidation.yml'
+PATH = archived_workflow('latest-code-revalidation.yml')
 
 
 class RevalidationWorkflowTests(unittest.TestCase):

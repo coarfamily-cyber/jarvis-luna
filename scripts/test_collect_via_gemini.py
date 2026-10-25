@@ -1,4 +1,5 @@
 """Offline regression tests for collector startup and truthful job outcomes."""
+from workflow_contract_fixtures import archived_workflow
 import json
 import io
 from contextlib import redirect_stdout
@@ -113,7 +114,7 @@ class CollectorTests(unittest.TestCase):
         self.assertIn('blocked', reason)
 
     def test_workflow_propagates_collection_failure_after_publication(self):
-        workflow = (Path(c.__file__).resolve().parents[1] / '.github/workflows/gemini-web-collect.yml').read_text()
+        workflow = (archived_workflow('gemini-web-collect.yml')).read_text()
         self.assertIn('id: collect', workflow)
         self.assertIn("if: always() && steps.collect.outcome != 'success'", workflow)
         self.assertLess(workflow.index('uses: ./.github/actions/publish'), workflow.index('name: Fail when collection failed'))

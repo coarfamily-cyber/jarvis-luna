@@ -1,5 +1,6 @@
 """Offline Git/ZIP/HTTP-metadata fixtures only. No provider or remote writes."""
 from __future__ import annotations
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import io
@@ -814,7 +815,7 @@ class GosiCheckpointTests(unittest.TestCase):
             self.skipTest('GNU timeout is required for Ubuntu workflow fixture')
         checkout = Path(__file__).resolve().parents[1]
         for filename, name in [('gosi-alt.yml', '브라우저 설치'), ('gosi-vision.yml', 'Install dependencies')]:
-            value = (checkout / '.github/workflows' / filename).read_text()
+            value = (archived_workflow(filename)).read_text()
             step = value.split('      - name: ' + name + '\n', 1)[1].split('\n      - ', 1)[0]
             self.assertIn('timeout-minutes: 5', step)
             self.assertIn('timeout --signal=TERM --kill-after=5s 280s', step)
@@ -864,7 +865,7 @@ class GosiCheckpointTests(unittest.TestCase):
     def test_standalone_product_input_is_one_quoted_environment_argument(self):
         import sys
         checkout = Path(__file__).resolve().parents[1]
-        value = (checkout / '.github/workflows/gosi-alt.yml').read_text()
+        value = (archived_workflow('gosi-alt.yml')).read_text()
         step = value.split('      - name: alt 에서 고시 꺼내기\n', 1)[1].split('\n      - ', 1)[0]
         self.assertIn('PD_NO: ${{ inputs.pd_no }}', step)
         body = '\n'.join(line[10:] for line in step.split('        run: |\n', 1)[1].splitlines())
@@ -885,7 +886,7 @@ class GosiCheckpointTests(unittest.TestCase):
         checkout = Path(__file__).resolve().parents[1]
         for name, collector in [('gosi-alt.yml', '      - name: alt 에서 고시 꺼내기'),
                                 ('gosi-vision.yml', '      - name: Collect DAISO GOSI images')]:
-            value = (checkout / '.github/workflows' / name).read_text()
+            value = (archived_workflow(name)).read_text()
             with self.subTest(workflow=name):
                 self.assertIn('  actions: read', value)
                 self.assertLess(value.index('id: gosi_safety'), value.index(collector))

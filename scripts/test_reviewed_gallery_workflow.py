@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline contract checks for the explicitly reviewed gallery workflow."""
+from workflow_contract_fixtures import archived_workflow
 from pathlib import Path
 import subprocess
 import json
@@ -10,7 +11,7 @@ import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-PATH = ROOT / '.github/workflows/shopify-reviewed-gallery.yml'
+PATH = archived_workflow('shopify-reviewed-gallery.yml')
 
 
 class ReviewedGalleryWorkflowTests(unittest.TestCase):
@@ -98,7 +99,7 @@ class ReviewedGalleryWorkflowTests(unittest.TestCase):
         run = self.step('오프라인 회귀 검사')['run']
         self.assertIn('socket.create_connection = blocked', run)
         self.assertIn('socket.socket.connect = blocked', run)
-        preflight = (ROOT / '.github/workflows/preflight.yml').read_text(encoding='utf-8')
+        preflight = (archived_workflow('preflight.yml')).read_text(encoding='utf-8')
         for name in ('test_active_product_gallery_plan', 'test_apply_reviewed_product_gallery',
                      'test_reviewed_gallery_workflow'):
             self.assertIn(name, run)

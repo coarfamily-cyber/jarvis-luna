@@ -5,6 +5,7 @@ Bash is required: missing tools are failures, not skipped regression tests.
 No project script, network, key, collector, LLM or paid API is invoked.
 """
 from __future__ import annotations
+from workflow_contract_fixtures import archived_workflow
 
 import os
 from pathlib import Path
@@ -226,7 +227,7 @@ source "$1" "$2"
                 self.assertEqual(self.run_mode("gate", env=values).returncode, expected)
 
     def test_workflow_wiring_always_and_outcomes(self):
-        workflow = yaml.safe_load((ROOT / ".github/workflows/preflight.yml").read_text(encoding="utf-8"))
+        workflow = yaml.safe_load((archived_workflow('preflight.yml')).read_text(encoding="utf-8"))
         steps = {s["id"]: s for s in workflow["jobs"]["verify"]["steps"] if "id" in s}
         for key in ("repairs", "regression", "pf", "graph", "summary", "gate"):
             self.assertEqual(steps[key]["if"], "always()")

@@ -1,4 +1,5 @@
 """Offline workflow boundaries and shell/Python guard checks."""
+from workflow_contract_fixtures import archived_workflow
 from pathlib import Path
 import json
 import os
@@ -8,7 +9,7 @@ import unittest
 import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
-PATH=ROOT/'.github/workflows/shopify-reviewed-draft-copy.yml'
+PATH=archived_workflow('shopify-reviewed-draft-copy.yml')
 
 class CopyWorkflowTests(unittest.TestCase):
     @classmethod

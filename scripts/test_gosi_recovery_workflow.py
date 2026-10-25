@@ -6,6 +6,7 @@ the real collector's persisted-stop path and cannot launch a browser or fetch.
 No production data, network, legal approvals or publication are changed.
 """
 from __future__ import annotations
+from workflow_contract_fixtures import archived_workflow
 
 from datetime import datetime, timezone
 import hashlib
@@ -29,7 +30,7 @@ import collector_result as results
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-WORKFLOW = ROOT / ".github/workflows/JARVIS-Deep-Analysis.yml"
+WORKFLOW = archived_workflow('JARVIS-Deep-Analysis.yml')
 
 
 class AuthenticatedGosiFixture:
@@ -761,7 +762,7 @@ export -f python playwright
         self.assertIn("steps.gosi_checkpoint.outcome == 'success'", upload["if"])
         self.assertEqual(upload["with"]["if-no-files-found"], "error")
         self.assertEqual(upload["with"]["name"], "gosi-safety-${{ github.run_id }}-${{ github.run_attempt }}")
-        preflight = (ROOT / ".github/workflows/preflight.yml").read_text()
+        preflight = (archived_workflow('preflight.yml')).read_text()
         self.assertIn("python -B scripts/test_gosi_alt_runtime.py", preflight)
         self.assertIn("python -B scripts/test_gosi_safety_checkpoint.py", preflight)
 
@@ -784,7 +785,7 @@ export -f python playwright
         prefixes = ('gosi-safety-', 'source-safety-', 'operations-safety-', 'typesafe-budget-receipt-')
         seen = set()
         for filename in ('JARVIS-Core-Automation.yml', 'JARVIS-Deep-Analysis.yml'):
-            document = yaml.safe_load((ROOT / '.github/workflows' / filename).read_text())
+            document = yaml.safe_load((archived_workflow(filename)).read_text())
             for job in document['jobs'].values():
                 for step in job['steps']:
                     if 'upload-artifact@' not in step.get('uses', ''):
@@ -816,12 +817,12 @@ export -f python playwright
         publish = next(s for s in self.steps if s.get("uses") == "./.github/actions/publish")
         self.assertEqual(publish["if"], "steps.continuity_mode.outputs.mode == 'normal' && (success() && steps.release_outcomes.outcome == 'success' && steps.release_quality.outcome == 'success')")
         self.assertEqual(publish["with"]["collector-report"], "data/agents/deep_run_results.json")
-        standalone = yaml.safe_load((ROOT / ".github/workflows/gosi-alt.yml").read_text())
+        standalone = yaml.safe_load((archived_workflow('gosi-alt.yml')).read_text())
         collection = next(s for s in standalone["jobs"]["collect"]["steps"]
                           if "python -u scripts/daiso/collect_gosi_alt.py" in s.get("run", ""))
         self.assertFalse(collection.get("continue-on-error", False))
         self.assertIn("python scripts/test_gosi_recovery_workflow.py",
-                      (ROOT / ".github/workflows/preflight.yml").read_text())
+                      (archived_workflow('preflight.yml')).read_text())
 
 
 if __name__ == "__main__":

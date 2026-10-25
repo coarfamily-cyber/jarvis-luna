@@ -1,5 +1,6 @@
 """Offline checks of shared team support wiring and canonical boundaries."""
 from __future__ import annotations
+from workflow_contract_fixtures import archived_workflow
 import importlib.util
 import json
 import os
@@ -17,7 +18,7 @@ class WiringTests(unittest.TestCase):
     def test_consumers_same_budget_main_only_and_scoped_secret(self):
         envs=[]
         for name in ('JARVIS-Deep-Analysis.yml','shopify-listing-copy.yml'):
-            doc=yaml.safe_load((WF/name).read_text(encoding='utf-8'))
+            doc=yaml.safe_load((archived_workflow(name)).read_text(encoding='utf-8'))
             self.assertEqual(doc['concurrency']['group'],'main-publish')
             self.assertFalse(doc['concurrency']['cancel-in-progress'])
             job=next(iter(doc['jobs'].values()))
@@ -59,7 +60,7 @@ class WiringTests(unittest.TestCase):
 
     def test_restricted_mode_never_inherits_or_receives_provider_credentials(self):
         for name in ('JARVIS-Core-Automation.yml', 'JARVIS-Deep-Analysis.yml'):
-            document=yaml.safe_load((WF/name).read_text(encoding='utf-8'))
+            document=yaml.safe_load((archived_workflow(name)).read_text(encoding='utf-8'))
             self.assertFalse(any('secrets.' in str(value) for value in document.get('env',{}).values()))
             for job in document['jobs'].values():
                 self.assertFalse(any('secrets.' in str(value) for value in job.get('env',{}).values()))
@@ -77,7 +78,7 @@ class WiringTests(unittest.TestCase):
 
     def test_mandatory_tests_in_both_gates(self):
         for name in ('preflight.yml','pages-verified.yml'):
-            text=(WF/name).read_text(encoding='utf-8')
+            text=(archived_workflow(name)).read_text(encoding='utf-8')
             for suite in ('test_typesafe_shared.py','test_team_typesafe.py','test_team_advisory_history.py','test_typesafe_receipt.py','test_typesafe_wiring.py'):
                 self.assertIn('python scripts/'+suite,text)
 
@@ -132,7 +133,7 @@ class WiringTests(unittest.TestCase):
         self.assertEqual(listing.MODEL, 'jev-1.14.0')
         self.assertEqual(team.MODEL_POLICY_VERSION, 'jarvis-jev-1.14-text-v1')
         for name in ('JARVIS-Deep-Analysis.yml', 'shopify-listing-copy.yml'):
-            doc = yaml.safe_load((WF/name).read_text(encoding='utf-8'))
+            doc = yaml.safe_load((archived_workflow(name)).read_text(encoding='utf-8'))
             job = next(iter(doc['jobs'].values()))
             env = (next(step for step in job['steps'] if 'setup_typesafe_shared.py' in step.get('run', ''))['env']
                    if name == 'JARVIS-Deep-Analysis.yml' else job['env'])

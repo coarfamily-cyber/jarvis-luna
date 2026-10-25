@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Release security invariants, no network and no production mutations."""
+from workflow_contract_fixtures import archived_workflow
 import ast
 from pathlib import Path
 import unittest
@@ -8,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class ReleaseIntegrationTests(unittest.TestCase):
     def load(self, name):
-        return yaml.safe_load((ROOT / '.github/workflows' / name).read_text(encoding='utf-8'))
+        return yaml.safe_load((archived_workflow(name)).read_text(encoding='utf-8'))
 
     def test_common_action_has_only_safe_transaction(self):
         doc = yaml.safe_load((ROOT / '.github/actions/publish/action.yml').read_text(encoding='utf-8'))
@@ -25,21 +26,23 @@ class ReleaseIntegrationTests(unittest.TestCase):
             self.assertNotIn(unsafe, step['run'])
 
     def test_active_pages_only_one_deployer(self):
-        owners = []
+        owners = set()
         for path in (ROOT / '.github/workflows').glob('*.yml'):
             doc = yaml.safe_load(path.read_text(encoding='utf-8'))
             if (doc.get('permissions') or {}).get('pages') == 'write':
-                owners.append(path.name)
+                owners.add(path.name)
             for job in doc.get('jobs', {}).values():
                 if (job.get('permissions') or {}).get('pages') == 'write':
-                    self.assertEqual(path.name, 'pages-verified.yml')
+                    owners.add(path.name)
+                    self.assertEqual(path.name, 'owned-pages-once.yml')
                 for step in job.get('steps', []):
                     if 'deploy-pages@' in step.get('uses', ''):
-                        self.assertEqual(path.name, 'pages-verified.yml')
-        self.assertEqual(owners, ['pages-verified.yml'])
+                        owners.add(path.name)
+                        self.assertEqual(path.name, 'owned-pages-once.yml')
+        self.assertEqual(owners, {'owned-pages-once.yml'})
 
     def test_required_new_checks_exist_and_preflight_runs_them(self):
-        body = (ROOT / '.github/workflows/preflight.yml').read_text(encoding='utf-8')
+        body = (archived_workflow('preflight.yml')).read_text(encoding='utf-8')
         for name in ('test_collector_result.py', 'test_release_quality.py', 'test_publish_transaction.py',
                      'test_public_site.py', 'test_dependency_pins.py', 'test_actions_release_integration.py',
                      'test_product_change_ledger.py', 'test_publish_graph_contract.py'):
@@ -51,16 +54,16 @@ class ReleaseIntegrationTests(unittest.TestCase):
         runs = '\n'.join(step.get('run', '') for step in doc['jobs']['core-automation']['steps'])
         self.assertNotIn('python scripts/google_search_data_collection.py', runs)
         self.assertNotIn('python scripts/obsidian_realtime_sync.py', runs)
-        text = (ROOT / '.github/workflows/JARVIS-Core-Automation.yml').read_text(encoding='utf-8')
+        text = (archived_workflow('JARVIS-Core-Automation.yml')).read_text(encoding='utf-8')
         self.assertIn('check_release_quality.py', text)
         self.assertIn('collector_result.py', text)
 
     def test_scheduled_model_evaluation_does_not_overwrite_prior_weights_first(self):
         for name in ('JARVIS-Deep-Analysis.yml','jarvis-real-knowledge.yml'):
-            text=(ROOT/'.github/workflows'/name).read_text(encoding='utf-8')
+            text=(archived_workflow(name)).read_text(encoding='utf-8')
             self.assertNotIn('python train_real_knowledge.py',text)
             self.assertIn('tune_real_knowledge_moe.py',text);self.assertIn('--promote',text)
-        text=(ROOT/'.github/workflows/jarvis-real-knowledge.yml').read_text(encoding='utf-8')
+        text=(archived_workflow('jarvis-real-knowledge.yml')).read_text(encoding='utf-8')
         self.assertNotIn('tune step soft-failed',text);self.assertNotIn('import numpy, pandas',text)
         tree=ast.parse((ROOT/'tune_real_knowledge_moe.py').read_text(encoding='utf-8'))
         assignments=[n for n in ast.walk(tree) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='promote' for t in n.targets)]

@@ -1,4 +1,5 @@
 """Offline exact legacy snapshot -> synthetic current transitions, not lost run bytes."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 import contextlib
 import io
@@ -294,8 +295,8 @@ class HistoryTests(unittest.TestCase):
         self.evidence()
 
     def test_both_workflows_capture_exact_advisory_history_paths(self):
-        deep = (ROOT / '.github/workflows/JARVIS-Deep-Analysis.yml').read_text()
-        listing = (ROOT / '.github/workflows/shopify-listing-copy.yml').read_text()
+        deep = (archived_workflow('JARVIS-Deep-Analysis.yml')).read_text()
+        listing = (archived_workflow('shopify-listing-copy.yml')).read_text()
         self.assertIn('paths: data obsidian', deep)
         line = next(s for s in listing.splitlines() if 'paths: data/agents ' in s)
         self.assertIn(hist.REPORT, line.split()); self.assertIn(hist.HISTORY, line.split())

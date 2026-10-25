@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline failure/conflict injection. Only temporary local bare Git remotes."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 import json
 import os
@@ -1128,7 +1129,7 @@ class TimingAndBudgetTests(unittest.TestCase):
 
     def test_core_budget_preserves_safety_and_both_runtime_passes(self):
         import yaml
-        text = (ROOT/'.github/workflows/JARVIS-Core-Automation.yml').read_text(encoding='utf-8')
+        text = (archived_workflow('JARVIS-Core-Automation.yml')).read_text(encoding='utf-8')
         workflow = yaml.load(text, Loader=yaml.BaseLoader)
         self.assertEqual(workflow['jobs']['core-automation']['timeout-minutes'], '60')
         self.assertEqual(workflow['concurrency'], {'group': 'main-publish', 'cancel-in-progress': 'false'})

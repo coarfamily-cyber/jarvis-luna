@@ -9,6 +9,9 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 import zipfile
+import tempfile
+import shutil
+from workflow_contract_fixtures import archived_workflow
 
 import apply_reviewed_draft_copy as exe
 import test_plan_draft_product_copy as planner_tests
@@ -29,6 +32,24 @@ class Client:
 
 class CopyExecutorTests(unittest.TestCase):
     def setUp(self):
+        # Legacy executor code hashes include its formerly active YAML. Model that
+        # historical checkout in a separate temporary root, never reactivate the
+        # repository workflow or weaken implementation_digest's fail-closed read.
+        temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
+        code_root = Path(temp.name)
+        source_root = Path(exe.__file__).resolve().parents[1]
+        self.production_source_root = source_root
+        self.historical_code_root = code_root
+        for relative in ('scripts/apply_reviewed_draft_copy.py', 'scripts/plan_draft_product_copy.py',
+                         'scripts/reviewed_copy_transaction.py', 'scripts/apply_reviewed_product_gallery.py',
+                         'scripts/plan_active_product_gallery.py', 'scripts/gallery_review.py',
+                         'data/manual/draft_copy/verified_fields.json'):
+            target = code_root / relative; target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_root / relative, target)
+        workflow = code_root / exe.WORKFLOW; workflow.parent.mkdir(parents=True)
+        shutil.copyfile(archived_workflow(Path(exe.WORKFLOW).name), workflow)
+        file_patch = patch.object(exe, '__file__', str(code_root/'scripts/apply_reviewed_draft_copy.py'))
+        file_patch.start(); self.addCleanup(file_patch.stop)
         self.fixture=planner_tests.CopyPlanTests();self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
         self.root,self.now,self.snapshot=self.fixture.root,self.fixture.now,self.fixture.snapshot
         self.snapshot['product'].update(vendor='Synthetic vendor',productType='Body Care')
@@ -40,6 +61,16 @@ class CopyExecutorTests(unittest.TestCase):
         self.context=dict(repository='synthetic/repo',run_id='1234',run_attempt='1',code_sha='a'*40,workflow_path=exe.WORKFLOW)
         self.path=self.root/'journal.json';self.client=Client(self.snapshot);self.checkpoint=Mock();self.checkpoint.verify.return_value=True
         self.fetch_patch=patch.object(exe,'fetch_sources');self.fetch=self.fetch_patch.start();self.addCleanup(self.fetch_patch.stop)
+    def test_current_checkout_without_active_workflow_stays_fail_closed(self):
+        with patch.object(exe, '__file__', str(self.production_source_root/'scripts/apply_reviewed_draft_copy.py')):
+            with self.assertRaises(FileNotFoundError): exe.implementation_digest()
+
+    def test_historical_workflow_bytes_remain_in_implementation_digest(self):
+        before = exe.implementation_digest()
+        path = self.historical_code_root / exe.WORKFLOW
+        path.write_bytes(path.read_bytes()+b'\n# fixture mutation\n')
+        self.assertNotEqual(exe.implementation_digest(), before)
+
     def plan(self):return exe.build_plan(self.scope,self.root,self.snapshot,now=self.now)
     def prepare(self):
         plan=self.plan();exe.atomic_json(self.path,exe.make_journal(plan,**self.context));return plan

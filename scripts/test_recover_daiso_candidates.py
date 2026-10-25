@@ -1,4 +1,5 @@
 """Offline counter recovery guard tests. No network, resets or production writes."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 import json
 import os
@@ -172,7 +173,7 @@ class PreparationTests(unittest.TestCase):
 class WorkflowTests(unittest.TestCase):
     def test_recovery_yaml_is_dispatch_only_and_uses_normal_guarded_publication(self):
         project=Path(__file__).resolve().parents[1]
-        workflow=yaml.safe_load((project/'.github/workflows/daiso-candidate-recovery.yml').read_text(encoding='utf-8'))
+        workflow=yaml.safe_load((archived_workflow('daiso-candidate-recovery.yml')).read_text(encoding='utf-8'))
         triggers=workflow.get('on',workflow.get(True))
         self.assertEqual(set(triggers),{'workflow_dispatch'})
         steps=workflow['jobs']['recover']['steps']

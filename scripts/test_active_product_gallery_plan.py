@@ -1,4 +1,5 @@
 """Synthetic, offline ACTIVE planning boundary tests. No storefront/API calls."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 import contextlib
 import io
@@ -225,7 +226,7 @@ class GalleryPlanTests(unittest.TestCase):
         self.assertEqual(json.loads(out.read_text())["operations"], [])
 
     def test_ci_registration_present(self):
-        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/preflight.yml").read_text()
+        workflow = (archived_workflow('preflight.yml')).read_text()
         self.assertEqual(workflow.count('python -B -m unittest discover -s scripts -p "test_active_product_gallery_plan.py"'), 1)
 
     def test_transparency_and_orientation_are_not_discarded(self):

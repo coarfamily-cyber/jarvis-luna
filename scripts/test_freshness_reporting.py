@@ -8,6 +8,7 @@ import subprocess
 import textwrap
 from pathlib import Path
 import tempfile
+from workflow_contract_fixtures import archived_workflow, QUARANTINE
 import unittest
 from unittest.mock import patch
 
@@ -38,16 +39,32 @@ class FreshnessReportingTests(unittest.TestCase):
             self.assertEqual(result['source_timestamp'], stamp)
             self.assertEqual(result['is_stale'], expected != 'fresh')
 
-    def test_inventory_covers_fourteen_not_five(self):
+    def test_archived_inventory_covers_fourteen_legacy_schedules(self):
         report = monitor.build_report(payloads(), '2026-10-03T12:00:00Z')
-        monitor.add_inventory(report, ROOT / '.github/workflows')
-        active={p.name for p in (ROOT/'.github/workflows').iterdir() if p.suffix in {'.yml','.yaml'}}
+        monitor.add_inventory(report, ROOT / QUARANTINE)
+        active={p.name for p in (ROOT/QUARANTINE).iterdir() if p.suffix in {'.yml','.yaml'}}
+        for name in active: archived_workflow(name)
         self.assertEqual(report['active_workflows'], len(active))
         self.assertEqual(report['scheduled_workflows'], 14)
         self.assertEqual(set(report['excluded_event_only_workflows']), active-set(monitor.WORKFLOWS))
-        self.assertEqual(len(report['excluded_disabled_workflows']), 12)
+        self.assertEqual(report['excluded_disabled_workflows'], [])
         self.assertTrue(report['coverage_complete'])
         self.assertEqual(set(report['workflows']), set(monitor.WORKFLOWS))
+
+    def test_current_owner_inventory_is_not_legacy_monitor_coverage(self):
+        from check_owned_workflow_policy import EXPECTED
+        report = monitor.build_report(payloads(), '2026-10-03T12:00:00Z')
+        monitor.add_inventory(report, ROOT / '.github/workflows')
+        expected = {Path(p).name for p in EXPECTED
+                    if p.startswith('.github/workflows/') and p.endswith(('.yml', '.yaml'))}
+        active = {p.name for p in (ROOT/'.github/workflows').glob('*.yml')}
+        self.assertEqual(active, expected)
+        self.assertEqual(report['active_workflows'], 9)
+        self.assertEqual(report['scheduled_workflows'], 1)
+        self.assertEqual(report['unmonitored_scheduled_workflows'], ['owned-core-local.yml'])
+        self.assertEqual(len(report['excluded_disabled_workflows']), 12)
+        self.assertFalse(report['coverage_complete'])
+        self.assertEqual(report['failed_actions'], 'unknown')
 
     def test_new_schedule_prevents_complete_coverage(self):
         with tempfile.TemporaryDirectory() as td:
@@ -178,7 +195,7 @@ class FreshnessReportingTests(unittest.TestCase):
                 replacement_ids(before,after,policy)
 
     def test_watchdog_shell_fixtures(self):
-        body=textwrap.dedent((ROOT/'.github/workflows/jarvis-watchdog.yml').read_text().split('        run: |\n',1)[1])
+        body=textwrap.dedent((archived_workflow('jarvis-watchdog.yml')).read_text().split('        run: |\n',1)[1])
         gh_fixture = """#!/usr/bin/env python3
 import os, sys
 args = sys.argv[1:]
@@ -221,7 +238,7 @@ print(int(value.timestamp()))
                 if mode == 'cooldown': self.assertIn('WATCHDOG_STALE', result.stdout)
 
     def test_watchdog_success_not_start_and_api_errors_not_suppressed(self):
-        text=(ROOT/'.github/workflows/jarvis-watchdog.yml').read_text()
+        text=(archived_workflow('jarvis-watchdog.yml')).read_text()
         self.assertIn('--status success --limit 1 --json updatedAt', text)
         self.assertIn('if [ "$state" != "active" ]', text)
         self.assertIn('--branch main', text)
@@ -230,7 +247,7 @@ print(int(value.timestamp()))
         self.assertNotIn('WATCHDOG_OK', text)
         self.assertIn('3600', text)
         configured=set(text.split('PUBLISH="',1)[1].split('"',1)[0].split())
-        expected={p.name for p in (ROOT/'.github/workflows').glob('*.yml') if 'group: main-publish' in p.read_text()}
+        expected={p.name for p in (ROOT/QUARANTINE).glob('*.yml') if 'group: main-publish' in p.read_text()}
         self.assertEqual(configured,expected)
 
 if __name__ == '__main__': unittest.main()

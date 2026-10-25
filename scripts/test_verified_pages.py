@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Offline invariants for the only allowed Pages deployment path."""
+"""Historical Pages contract; archived YAML is never current deployment readiness."""
 from pathlib import Path
+from workflow_contract_fixtures import archived_workflow, QUARANTINE
 import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOWS = ROOT / '.github' / 'workflows'
+WORKFLOWS = ROOT / QUARANTINE
 
 
 def load_workflow(path):
@@ -16,7 +17,7 @@ def load_workflow(path):
 
 class VerifiedPagesTests(unittest.TestCase):
     def setUp(self):
-        self.doc, self.trigger = load_workflow(WORKFLOWS / 'pages-verified.yml')
+        self.doc, self.trigger = load_workflow(archived_workflow('pages-verified.yml'))
         self.job = self.doc['jobs']['verified-deploy']
         self.steps = self.job['steps']
 
@@ -44,7 +45,7 @@ class VerifiedPagesTests(unittest.TestCase):
         covered = set(self.trigger['workflow_run']['workflows'])
         self.assertIn('배포 전 검증', covered)
         for file in WORKFLOWS.glob('*.yml'):
-            text = file.read_text(encoding='utf-8')
+            text = archived_workflow(file.name).read_text(encoding='utf-8')
             if 'uses: ./.github/actions/publish' in text:
                 doc, _ = load_workflow(file)
                 self.assertIn(doc['name'], covered, file.name)

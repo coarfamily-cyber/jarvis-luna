@@ -1,4 +1,5 @@
 """Offline exact-product correction, shared transaction and workflow regressions."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 from datetime import timedelta
 import hashlib
@@ -8,6 +9,8 @@ import os
 from pathlib import Path
 import subprocess
 import unittest
+import tempfile
+import shutil
 from unittest.mock import Mock, patch
 import zipfile
 
@@ -45,6 +48,22 @@ def public_html(body,*,identity=True,canonical=exe.PUBLIC_URL):
 
 class ActiveCopyTests(unittest.TestCase):
     def setUp(self):
+        # Hash the unchanged legacy executor against an isolated historical
+        # checkout, not a reactivated production workflow or a mocked digest.
+        temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
+        code_root = Path(temp.name)
+        source_root = exe.ROOT
+        self.production_source_root = source_root
+        self.historical_code_root = code_root
+        for relative in ('scripts/dr_cpu_active_copy.py', 'scripts/reviewed_copy_transaction.py',
+                         'scripts/apply_reviewed_product_gallery.py', 'scripts/plan_active_product_gallery.py',
+                         'scripts/gallery_review.py', 'data/manual/active_copy/1084687-20261022.json'):
+            target = code_root / relative; target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_root / relative, target)
+        workflow = code_root / exe.WORKFLOW; workflow.parent.mkdir(parents=True)
+        shutil.copyfile(archived_workflow(Path(exe.WORKFLOW).name), workflow)
+        root_patch = patch.object(exe, 'ROOT', code_root)
+        root_patch.start(); self.addCleanup(root_patch.stop)
         self.fixture=fixtures.ExecutorTests();self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
         self.root,self.now=self.fixture.root,self.fixture.now
         self.rule=exe.read_policy();self.snapshot=deepcopy(self.fixture.snapshot)
@@ -69,6 +88,16 @@ class ActiveCopyTests(unittest.TestCase):
         self.source_check=patch.object(exe,'verify_sources');self.source_check.start();self.addCleanup(self.source_check.stop)
         self.fetch_patch=patch.object(exe,'fetch_sources');self.fetch=self.fetch_patch.start();self.addCleanup(self.fetch_patch.stop)
         self.checkpoint=Mock();self.checkpoint.verify.return_value=True
+    def test_current_checkout_without_active_workflow_stays_fail_closed(self):
+        with patch.object(exe, 'ROOT', self.production_source_root):
+            with self.assertRaises(FileNotFoundError): exe.implementation_digest()
+
+    def test_historical_workflow_bytes_remain_in_implementation_digest(self):
+        before = exe.implementation_digest()
+        path = self.historical_code_root / exe.WORKFLOW
+        path.write_bytes(path.read_bytes()+b'\n# fixture mutation\n')
+        self.assertNotEqual(exe.implementation_digest(), before)
+
     def plan(self):return exe.build_plan(self.scope,self.root,self.snapshot,now=self.now)
     def prepare(self):
         p=self.plan();journal=exe.make_journal(p,**self.context);exe.atomic_json(self.path,journal)
@@ -421,7 +450,7 @@ class ActiveCopyTests(unittest.TestCase):
 class ActiveWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.path=exe.ROOT/exe.WORKFLOW;cls.text=cls.path.read_text();cls.doc=yaml.safe_load(cls.text);cls.steps=cls.doc['jobs']['copy']['steps']
+        cls.path=archived_workflow(Path(exe.WORKFLOW).name);cls.text=cls.path.read_text();cls.doc=yaml.safe_load(cls.text);cls.steps=cls.doc['jobs']['copy']['steps']
     def step(self,name):return next(s for s in self.steps if s.get('name')==name)
     def test_manual_main_default_false_shared_serialization(self):
         trigger=self.doc.get('on',self.doc.get(True));self.assertEqual(set(trigger),{'workflow_dispatch'})
@@ -460,7 +489,7 @@ class ActiveWorkflowTests(unittest.TestCase):
         offline=self.step('Offline regression tests')['run']
         self.assertIn('socket.create_connection = blocked',offline);self.assertIn('test_dr_cpu_active_copy',offline)
         self.assertIn('test_apply_reviewed_draft_copy',offline)
-        self.assertIn('python -B scripts/test_dr_cpu_active_copy.py',(exe.ROOT/'.github/workflows/preflight.yml').read_text())
+        self.assertIn('python -B scripts/test_dr_cpu_active_copy.py',(archived_workflow('preflight.yml')).read_text())
     def test_invalid_inputs_rejected_without_remote(self):
         script=self.step('Validate bounded inputs')['run']
         for changes in [{'REVIEW_TICKET':'../evil'},{'APPLY_COPY':'true','EXPECTED_DIGEST':''},

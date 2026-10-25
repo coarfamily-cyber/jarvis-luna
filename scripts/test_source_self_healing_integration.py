@@ -1,4 +1,5 @@
 """Offline self-healing integration fixtures, never real source/provider calls."""
+from workflow_contract_fixtures import archived_workflow
 import copy
 import hashlib
 import io
@@ -264,9 +265,9 @@ class ResumptionIntegration(unittest.TestCase):
                 commerce_validator.validate_blocked_export_scope(root,out,{'old'})
 
     def test_source_only_publication_cannot_trigger_model_copy_job(self):
-        listing=(ROOT/'.github/workflows/shopify-listing-copy.yml').read_text(encoding='utf-8')
+        listing=(archived_workflow('shopify-listing-copy.yml')).read_text(encoding='utf-8')
         self.assertIn("github.event_name != 'push' || !contains(github.event.head_commit.message, '[source-recovery-offline]')",listing)
-        daiso=(ROOT/'.github/workflows/daiso-real-collection.yml').read_text(encoding='utf-8')
+        daiso=(archived_workflow('daiso-real-collection.yml')).read_text(encoding='utf-8')
         marked=[line for line in daiso.splitlines() if 'message:' in line and '[source-recovery-offline]' in line]
         self.assertEqual(len(marked),2)
         for line in marked:
@@ -378,7 +379,7 @@ class PublicationIntegration(unittest.TestCase):
 
     def test_workflows_restore_before_actuate_and_always_retain(self):
         for name in ('daiso-real-collection.yml','JARVIS-Core-Automation.yml','JARVIS-Deep-Analysis.yml'):
-            text=(ROOT/'.github/workflows'/name).read_text(encoding='utf-8')
+            text=(archived_workflow(name)).read_text(encoding='utf-8')
             self.assertIn('group: main-publish',text)
             self.assertIn("steps.source_safety.outputs.continuity == 'verified'",text)
             import yaml
@@ -397,7 +398,7 @@ class PublicationIntegration(unittest.TestCase):
             self.assertEqual(source['if'],source_condition)
             self.assertEqual(operations['if'],operations_condition)
             self.assertIn('include-hidden-files: true',text)
-        daiso=(ROOT/'.github/workflows/daiso-real-collection.yml').read_text()
+        daiso=(archived_workflow('daiso-real-collection.yml')).read_text()
         candidate=daiso[daiso.index('- name: 정상 무변경 관측 metadata 발행'):daiso.index('- name: 수집 시도 진단 보존')]
         self.assertIn('data/daiso_real/.shortlist_observation_claim.json',candidate)
         self.assertIn('data/daiso_real/shortlist_observations.json',candidate)

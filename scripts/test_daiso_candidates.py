@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline fixtures for continuous discovery with unchanged operating products."""
+from workflow_contract_fixtures import archived_workflow
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import importlib.util
@@ -309,7 +310,7 @@ class CollectorFixtures(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     def test_discovery_enabled_operating_updates_disabled_and_narrow_publish(self):
-        doc = yaml.safe_load((ROOT/'.github/workflows/daiso-real-collection.yml').read_text(encoding='utf-8'))
+        doc = yaml.safe_load((archived_workflow('daiso-real-collection.yml')).read_text(encoding='utf-8'))
         steps = doc['jobs']['collect']['steps']
         collector = next(s for s in steps if s.get('id') == 'collector')
         self.assertEqual(collector['env']['DAISO_DISCOVERY_ENABLED'], '1')
@@ -325,7 +326,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_candidate_tests_required_by_preflight_and_pages(self):
         for name in ('preflight.yml', 'pages-verified.yml'):
-            text = (ROOT/'.github/workflows'/name).read_text(encoding='utf-8')
+            text = (archived_workflow(name)).read_text(encoding='utf-8')
             self.assertIn('python scripts/test_daiso_candidates.py', text)
 
 

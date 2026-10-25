@@ -6,11 +6,14 @@ import io
 import json
 import tempfile
 import unittest
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from workflow_contract_fixtures import archived_workflow
 SPEC = importlib.util.spec_from_file_location(
     "collect_desk_catalog_order_under_test", ROOT / "scripts/daiso/collect_desk_catalog.py")
 collector = importlib.util.module_from_spec(SPEC)
@@ -281,7 +284,7 @@ class CollectorCliTests(unittest.TestCase):
 
 class RegistrarWorkflowIsolationTests(unittest.TestCase):
     def test_runtime_secrets_and_catalog_override_do_not_reach_unit_tests(self):
-        workflow = (ROOT / '.github/workflows/daiso-daily-beauty-shopify.yml').read_text(encoding='utf-8')
+        workflow = (archived_workflow('daiso-daily-beauty-shopify.yml')).read_text(encoding='utf-8')
         job_header = workflow.split('    steps:', 1)[0]
         self.assertNotIn('SHOPIFY_CLIENT_SECRET:', job_header)
         self.assertNotIn('GEMINI_API_KEY:', job_header)

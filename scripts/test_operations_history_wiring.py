@@ -1,4 +1,5 @@
 """Offline retention/privacy contracts for bounded immutable operations history."""
+from workflow_contract_fixtures import archived_workflow
 import json
 from pathlib import Path
 import tempfile
@@ -28,7 +29,7 @@ class HistoryWiringTests(unittest.TestCase):
     def test_all_existing_operations_artifacts_keep_state_history_and_reports(self):
         for name in WORKFLOWS:
             with self.subTest(workflow=name):
-                workflow = yaml.safe_load((ROOT / '.github/workflows' / name).read_text())
+                workflow = yaml.safe_load((archived_workflow(name)).read_text())
                 steps = [step for job in workflow['jobs'].values()
                          for step in job.get('steps', [])
                          if step.get('name') == 'Retain immutable operations safety history']
@@ -55,7 +56,7 @@ class HistoryWiringTests(unittest.TestCase):
 
     def test_new_regressions_run_in_both_exact_head_ci_and_deployment(self):
         for workflow in ('preflight.yml', 'pages-verified.yml'):
-            text = (ROOT / '.github/workflows' / workflow).read_text()
+            text = (archived_workflow(workflow)).read_text()
             for test in REGRESSIONS:
                 with self.subTest(workflow=workflow, test=test):
                     self.assertEqual(text.count('"' + test + '"'), 1)

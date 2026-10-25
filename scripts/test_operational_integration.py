@@ -5,6 +5,7 @@ Run: python scripts/test_operational_integration.py
 No credentials, models, collectors, real data edits, or network are used.
 Git is used only for local fixture HEAD restoration, never for the source repo.
 """
+from workflow_contract_fixtures import archived_workflow, QUARANTINE
 from contextlib import redirect_stdout
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -34,7 +35,7 @@ NOW = datetime(2026, 10, 3, 12, tzinfo=UTC)
 OLD = (NOW - timedelta(days=10)).isoformat()
 FRESH = (NOW - timedelta(minutes=20)).isoformat()
 FUTURE = (NOW + timedelta(hours=1)).isoformat()
-DAISO = REPO / ".github" / "workflows" / "daiso-real-collection.yml"
+DAISO = archived_workflow("daiso-real-collection.yml")
 
 
 def steps_from_workflow(text):
@@ -348,10 +349,10 @@ class WorkflowTests(unittest.TestCase):
         for event, flag, expected in (("schedule", False, True), ("workflow_dispatch", False, False), ("workflow_dispatch", True, True)):
             self.assertEqual(event != "workflow_dispatch" or flag, expected)
 
-    def test_monitor_workflows_have_actions_read_permission(self):
+    def test_archived_monitor_workflows_have_actions_read_permission(self):
         found = 0
-        for path in (REPO / ".github/workflows").glob("*.yml"):
-            text = path.read_text(encoding="utf-8")
+        for path in (REPO / QUARANTINE).glob("*.yml"):
+            text = archived_workflow(path.name).read_text(encoding="utf-8")
             if "scripts/collect_workflow_status.py" in text:
                 found += 1
                 permissions = re.search(r"(?m)^permissions:\n((?:[ \t].*\n|\n)+)", text)
@@ -363,7 +364,7 @@ class WorkflowTests(unittest.TestCase):
         frequencies = {"JARVIS-Core-Automation.yml": 12, "JARVIS-Deep-Analysis.yml": 12, "jarvis-real-knowledge.yml": 4, "daiso-real-collection.yml": 1, "root-collectors.yml": 1}
         minutes = []
         for name, expected in frequencies.items():
-            text = (REPO / ".github/workflows" / name).read_text(encoding="utf-8")
+            text = (archived_workflow(name)).read_text(encoding="utf-8")
             crons = re.findall(r"cron:\s*['\"]([^'\"]+)['\"]", text)
             self.assertEqual(len(crons), 1, name)
             minute, hour, day, month, weekday = crons[0].split()
@@ -462,7 +463,7 @@ class DeepRealDataValidationTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        workflow = REPO / ".github/workflows/JARVIS-Deep-Analysis.yml"
+        workflow = archived_workflow('JARVIS-Deep-Analysis.yml')
         step = steps_from_workflow(workflow.read_text(encoding="utf-8"))[
             "Validate real-data artifacts"]
         cls.code = textwrap.dedent(re.search(
