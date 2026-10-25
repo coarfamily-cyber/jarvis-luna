@@ -21,7 +21,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
     def test_actual_checkout(self):
         result=policy.verify(ROOT)
         self.assertEqual(result['active_schedules'], 0 if policy.STAGE == policy.MANUAL_STAGE else 1)
-        self.assertEqual(len(result['active_manual_workflows']), 6 if policy.STAGE == policy.MANUAL_STAGE else 5)
+        self.assertEqual(len(result['active_manual_workflows']), 7 if policy.STAGE == policy.MANUAL_STAGE else 6)
         self.assertEqual(result['archived_workflows'],30)
         self.assertFalse(result['production_recovered'])
     def test_exact_v3_active_set(self):
@@ -34,7 +34,8 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             '.github/workflows/owned-pages-once.yml',
             '.github/workflows/owned-repo-smoke.yml',
             '.github/workflows/owned-shopify-readonly-preflight.yml',
-            '.github/workflows/owned-shopify-team-observation.yml'])
+            '.github/workflows/owned-shopify-team-observation.yml',
+            '.github/workflows/owned-technical-review-report.yml'])
     def test_pages_exact_inventory_matches_policy(self):
         # Keep Pages literal allowlist and exact fingerprint policy synchronized.
         doc = yaml.safe_load((ROOT / '.github/workflows/owned-pages-once.yml').read_text())
@@ -51,6 +52,33 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
         expected = sorted(Path(p).name for p in policy.EXPECTED
                           if p.startswith('.github/workflows/') and p.endswith(('.yml', '.yaml')))
         self.assertEqual(exact, expected)
+
+    def test_technical_report_lane_exact_readonly(self):
+        text=(ROOT/'.github/workflows/owned-technical-review-report.yml').read_text()
+        doc=yaml.safe_load(text)
+        self.assertEqual(set(doc.get('on',doc.get(True))),{'workflow_dispatch'})
+        self.assertEqual(doc['permissions'],{'contents':'read'})
+        self.assertEqual(set(doc['jobs']),{'report'})
+        job=doc['jobs']['report'];self.assertNotIn('environment',job)
+        for forbidden in ('secrets.', 'contents: write', 'actions: write', 'schedule:', 'workflow_run:'):
+            self.assertNotIn(forbidden,text)
+        self.assertEqual(job['timeout-minutes'],4)
+        for guard in ("github.repository_id == '1431541717'", "github.ref == 'refs/heads/main'",'inputs.expected_sha == github.sha','github.run_attempt == 1'):
+            self.assertIn(guard,job['if'])
+        steps=job['steps'];self.assertEqual(steps[0]['with']['persist-credentials'],False)
+        self.assertEqual(steps[0]['with']['ref'],'${{ github.sha }}')
+        self.assertIn('test_run_technical_review_report',steps[2]['run'])
+        self.assertEqual(steps[3]['run'],'timeout --signal=TERM --kill-after=5s 45s python -B scripts/run_technical_review_report.py')
+        upload=steps[4];self.assertEqual(upload['with']['retention-days'],30)
+        self.assertEqual(upload['with']['overwrite'],False)
+        self.assertEqual(upload['with']['path'],'${{ runner.temp }}/technical-review-report-${{ github.run_id }}-${{ github.run_attempt }}/result.json')
+        self.assertEqual(upload['uses'],'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9')
+    def test_technical_report_workflow_changes_rejected(self):
+        path=self.root/'.github/workflows/owned-technical-review-report.yml';original=path.read_text()
+        for mutation in (original.replace('contents: read','contents: write'), original.replace('retention-days: 30','retention-days: 90'),original+'\n# unreviewed\n'):
+            path.write_text(mutation)
+            with self.assertRaises(ValueError):policy.verify(self.root)
+        path.write_text(original)
 
     def test_fx_lane_is_manual_bounded_credential_free(self):
         text=(ROOT/'.github/workflows/owned-fx-readonly-observation.yml').read_text()
