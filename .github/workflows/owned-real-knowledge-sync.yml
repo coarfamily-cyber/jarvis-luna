@@ -48,7 +48,7 @@ jobs:
           python -m pip --isolated install --disable-pip-version-check --require-hashes --only-binary=:all: -r "$RUNNER_TEMP/knowledge-verification.txt"
       - name: Verify reviewed knowledge-only helper
         run: |
-          printf '%s  %s\n' '4a395b8a87dbd81909f766c77bed73fa88e06812b75c455133da0dde8eda057c' 'scripts/owned_real_knowledge_sync.py' | sha256sum --check --status
+          printf '%s  %s\n' 'daf9519c8424f66fa2c367984283f32b7db56e2d19ab7cd03147458f071e3309' 'scripts/owned_real_knowledge_sync.py' | sha256sum --check --status
       - name: Offline knowledge and workflow boundary tests
         run: |
           python -I -B - <<'PY'
