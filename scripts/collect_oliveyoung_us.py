@@ -20,7 +20,6 @@ robots.txt 준수 (2026-08-31 확인)
 from __future__ import annotations
 
 import json
-import re
 import sys
 import time
 import http.cookiejar
@@ -186,8 +185,8 @@ def parse(body: str) -> list[dict]:
             "product_id": pid,
             "product": obj["product_name"].strip(),
             "brand": (obj.get("brand_name") or "").strip(),
-            "price_usd": float(price) if isinstance(price, (int, float)) else None,
-            "original_price_usd": float(orig) if isinstance(orig, (int, float)) else None,
+            "price_usd": float(price) if isinstance(price, (int, float)) and not isinstance(price, bool) else None,
+            "original_price_usd": float(orig) if isinstance(orig, (int, float)) and not isinstance(orig, bool) else None,
             "currency": dig(obj, "price", "currency") or "USD",
             "rating": obj.get("rating") if isinstance(obj.get("rating"), (int, float)) else None,
             "review_count": obj.get("review_count") if isinstance(obj.get("review_count"), int) else None,

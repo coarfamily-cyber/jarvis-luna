@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import math
 from scripts import fx_provenance
 from scripts.fetch_fx_rate import as_date
 import re
@@ -196,10 +197,17 @@ def from_oliveyoung_us():
         if not is_good_name(name):
             continue
         price = p.get("price_usd")
+        usd_price = price if (p.get("currency") == "USD"
+                              and isinstance(price, (int, float))
+                              and not isinstance(price, bool)
+                              and math.isfinite(price) and price > 0) else None
         rows.append({
             "product": name,
             "sub": p.get("brand") or "",
-            "badge": f"${price:.2f}" if isinstance(price, (int, float)) else "",
+            "badge": f"${usd_price:.2f}" if usd_price is not None else "",
+            # Keep the collector's numeric USD observation for current market
+            # scoring. A display badge is not a machine-readable price.
+            "price_usd": usd_price,
             "rank": p.get("rank") or 0,
             "rating": p.get("rating"),
             "review_count": p.get("review_count"),
