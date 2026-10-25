@@ -200,3 +200,18 @@ editor-content 자체가 원본에 없다. 스크립트가 그린다.
 
 틀린 판단과 그것을 뒤집은 실측값을 주석에 같이 적는다.
 다음에 같은 자리를 파는 사람이 헛돌지 않게 한다.
+
+
+## Agent skills
+
+`.claude/skills/` 에 Matt Pocock skills v1.3.1 을 원본 그대로 넣었다 (2026-10-25, MIT, upstream `mattpocock/skills@5beb35b`).
+사용자 호출: `/grill-me` 계획 다듬기 · `/wait-what` 다시 설명 · `/implement-spec` 스펙 구현 · `/to-spec` · `/to-tickets` · `/retro` 회고.
+`/retro` 는 위 「재귀적 자기개선 루프」의 ①②를 돕는다. 찾은 것은 사람에게 보고하고, 고치는 것은 루프대로 한다.
+
+### Issue tracker
+
+GitHub Issues (`coarfamily-cyber/jarvis-luna`, `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+single-context: 루트 `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
