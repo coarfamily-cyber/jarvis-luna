@@ -14,7 +14,7 @@ HOURLY_STAGE = 'owned-repository-durable-local-v3'
 # This source constant is reviewed per deployment; no CLI/environment override.
 STAGE = HOURLY_STAGE
 # Separately reviewed information-only lane; existing core authority is unchanged.
-KNOWLEDGE_STAGE = 'owned-real-knowledge-data-only-v1'
+KNOWLEDGE_STAGE = 'owned-real-knowledge-data-only-v2'
 KNOWLEDGE_WORKFLOW = '.github/workflows/owned-real-knowledge-sync.yml'
 KNOWLEDGE_GUARD = "github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.repository_owner_id == '280980688' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && (github.event_name == 'schedule' || inputs.expected_sha == github.sha)"
 PRODUCER_PATH = '.github/workflows/owned-core-local.yml'
@@ -24,7 +24,7 @@ SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
 # Reviewed manual-only fresh catalog observation; no new schedule or writer.
 # Existing owner-authorized manual shipping lane; registration is not execution approval.
-EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '4c15f104549314acced44cd8f92f9282eacf4930', 'mode': '100644'}, '.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '635d1c38d25d8395af84e04a7c33d5c371009a1b', 'mode': '100644'},
+EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '369b59290807bf5d763aa84654ebdadb7d37f1b2', 'mode': '100644'}, '.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '635d1c38d25d8395af84e04a7c33d5c371009a1b', 'mode': '100644'},
  '.github/workflows/owned-technical-review-report.yml': {'blob': '19392daff1cf47e61b32940a988027316bae1d30', 'mode': '100644'},
  '.github/workflows/owned-fx-readonly-observation.yml': {'blob': '5f8c73fe7f8e0a77a47d944521ea617ef773a37d', 'mode': '100644'},
  '.github/workflows/owned-shopify-team-observation.yml': {'blob': '7375fe80e2d48d5d4b059da51b7cb7bb79176c47', 'mode': '100644'},
@@ -110,7 +110,7 @@ EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '4c15f104549314acced44cd8f92f9282eacf49
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
  # Reviewed owner-audit home-card Pages bytes v2; all execution policies remain unchanged.
- '.github/workflows/owned-pages-once.yml': {'blob': 'ae6e5b783ed921aa451fb4810646e70c0a72ffcf',
+ '.github/workflows/owned-pages-once.yml': {'blob': '9e48e37908933e8656ab41c311975e83da0a70be',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},
@@ -125,7 +125,7 @@ EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '4c15f104549314acced44cd8f92f9282eacf49
 
 
 def verify(root):
-    if KNOWLEDGE_STAGE != 'owned-real-knowledge-data-only-v1':
+    if KNOWLEDGE_STAGE != 'owned-real-knowledge-data-only-v2':
         raise ValueError('unknown_knowledge_policy_stage')
     if STAGE not in PRODUCER_BLOBS:
         raise ValueError('unknown_workflow_policy_stage')

@@ -268,6 +268,38 @@ class GitHubAPI:
         tree_sha = sha(doc["tree"]["sha"])
         return self.call("GET", "/git/trees/" + tree_sha + "?recursive=1")
 
+    def main_baseline(self, source_sha):
+        """Walk only the fixed main seed path, never main's recursive tree."""
+        source_sha = sha(source_sha)
+        commit = self.call("GET", "/git/commits/" + source_sha)
+        need(isinstance(commit, dict) and commit.get("sha") == source_sha,
+             "main baseline source commit mismatch")
+        need(isinstance(commit.get("tree"), dict), "main baseline commit tree missing")
+        tree_sha = sha(commit["tree"].get("sha"))
+        segments = ("data", "knowledge", "training_corpus.jsonl")
+        for index, segment in enumerate(segments):
+            tree = self.call("GET", "/git/trees/" + tree_sha)
+            need(isinstance(tree, dict) and tree.get("sha") == tree_sha,
+                 "main baseline tree identity mismatch")
+            need(tree.get("truncated") is False and isinstance(tree.get("tree"), list),
+                 "main baseline tree missing/truncated")
+            need(len(tree["tree"]) <= MAX_FILES, "main baseline tree entry cap")
+            need(all(isinstance(row, dict) and isinstance(row.get("path"), str)
+                     and row["path"] and "/" not in row["path"] for row in tree["tree"]),
+                 "invalid nonrecursive main tree entry")
+            matches = [row for row in tree["tree"] if row["path"] == segment]
+            need(len(matches) == 1, "main baseline path segment missing/duplicate")
+            entry = matches[0]
+            final = index == len(segments) - 1
+            need(entry.get("type") == ("blob" if final else "tree")
+                 and entry.get("mode") == ("100644" if final else "040000"),
+                 "main baseline path mode/type mismatch")
+            entry_sha = sha(entry.get("sha"))
+            if final:
+                return self.blob(entry_sha, CORPUS_CAP)
+            tree_sha = entry_sha
+        raise SyncError("main baseline fixed path not resolved")
+
     def blob(self, blob_sha, cap):
         doc = self.call("GET", "/git/blobs/" + sha(blob_sha))
         need(doc.get("encoding") == "base64" and 0 <= doc.get("size", cap + 1) <= cap, "invalid blob")
@@ -329,11 +361,7 @@ def prepare(root, out, api=None, env=None):
     api = api or GitHubAPI()
     api.verify()
     # Always establish the source-main baseline, including when a data branch exists.
-    tree = api.tree(ctx["source_sha"])
-    need(tree.get("truncated") is False, "truncated main baseline tree")
-    matches = [r for r in tree.get("tree", []) if r.get("path") == "data/knowledge/training_corpus.jsonl"]
-    need(len(matches) == 1 and matches[0].get("mode") == "100644" and matches[0].get("type") == "blob", "tracked main baseline missing/invalid")
-    baseline_data = api.blob(matches[0]["sha"], CORPUS_CAP)
+    baseline_data = api.main_baseline(ctx["source_sha"])
     baseline = parse_corpus(baseline_data)
     need(bool(baseline), "main baseline must not be empty")
     head = api.head()
