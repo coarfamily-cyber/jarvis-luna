@@ -1,4 +1,4 @@
-"""Exact durable-local-v3 plus reviewed knowledge-data-v1 policy; no execution or mutation.
+"""Exact durable-local-v3 plus reviewed knowledge and daily offline-smoke policy; no execution or mutation.
 
 Legacy assertions use separate temporary fixture views, never this active view.
 Updating active workflow bytes requires an explicit reviewed policy version.
@@ -15,6 +15,8 @@ HOURLY_STAGE = 'owned-repository-durable-local-v3'
 STAGE = HOURLY_STAGE
 # Separately reviewed information-only lane; existing core authority is unchanged.
 KNOWLEDGE_STAGE = 'owned-real-knowledge-data-only-v2'
+# Separately reviewed fixture-only verification; no business execution authority.
+SMOKE_STAGE = 'owned-repository-offline-smoke-daily-v1'
 KNOWLEDGE_WORKFLOW = '.github/workflows/owned-real-knowledge-sync.yml'
 KNOWLEDGE_GUARD = "github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.repository_owner_id == '280980688' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && (github.event_name == 'schedule' || inputs.expected_sha == github.sha)"
 PRODUCER_PATH = '.github/workflows/owned-core-local.yml'
@@ -114,7 +116,7 @@ EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '369b59290807bf5d763aa84654ebdadb7d37f1
  # 국내 판매처 랭킹 card and display-only JPY line in index.html. Still 36 public files.
  '.github/workflows/owned-pages-once.yml': {'blob': 'd385b45f30b9e500bfd7fe438b9d7514e62269e7',
                                             'mode': '100644'},
- '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
+ '.github/workflows/owned-repo-smoke.yml': {'blob': '8cd6c141576c9af9bc5066713d78a31007a5194f',
                                             'mode': '100644'},
  '.github/workflows/phase26_complete_automation.yml.disabled': {'blob': '541ef487568a9763cbfe8cd42b966717e109ce38',
                                                                 'mode': '100644'},
@@ -127,6 +129,8 @@ EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '369b59290807bf5d763aa84654ebdadb7d37f1
 
 
 def verify(root):
+    if SMOKE_STAGE != 'owned-repository-offline-smoke-daily-v1':
+        raise ValueError('unknown_smoke_policy_stage')
     if KNOWLEDGE_STAGE != 'owned-real-knowledge-data-only-v2':
         raise ValueError('unknown_knowledge_policy_stage')
     if STAGE not in PRODUCER_BLOBS:
@@ -221,6 +225,12 @@ def verify(root):
                             'run_jarvis_agents.py', 'train_real_knowledge.py', 'tune_real_knowledge_moe.py')):
                         raise ValueError('knowledge_broad_execution_forbidden')
                     schedules += 1
+                elif path.name == 'owned-repo-smoke.yml':
+                    if (event != {'workflow_dispatch': None,
+                                  'schedule': [{'cron': '53 3 * * *'}]} or
+                            doc.get('permissions') != {'contents': 'read'}):
+                        raise ValueError('exact_daily_offline_smoke_policy_required')
+                    schedules += 1
                 elif path.name == 'owned-core-ledger-publisher.yml':
                     expected_events = {
                         'workflow_run': {'workflows': ['Owned Core local saved-input epoch'],
@@ -276,7 +286,7 @@ def verify(root):
                 active_docs.append(rel)
     if actual != expected:
         raise ValueError('workflow_inventory_changed')
-    return {'stage': STAGE, 'knowledge_stage': KNOWLEDGE_STAGE, 'scope': 'actual_checkout_quarantine_policy',
+    return {'stage': STAGE, 'knowledge_stage': KNOWLEDGE_STAGE, 'smoke_stage': SMOKE_STAGE, 'scope': 'actual_checkout_quarantine_policy',
             'active_workflows': sorted(active_docs),
             'active_manual_workflows': sorted(manual_docs), 'archived_workflows': 30,
             'active_schedules': schedules, 'production_recovered': False}

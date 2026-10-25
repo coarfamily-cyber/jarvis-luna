@@ -41,7 +41,7 @@ class IndependentOwnedWorkflowPolicyTests(unittest.TestCase):
         path=self.root/'.github/workflows';target=self.root/'.github/moved-workflows'
         path.rename(target);path.symlink_to(target,target_is_directory=True)
         with self.assertRaises(ValueError):policy.verify(self.root)
-    def test_schedule_added_to_manual_workflow_rejected(self):
+    def test_unreviewed_extra_smoke_schedule_rejected(self):
         path=self.root/'.github/workflows/owned-repo-smoke.yml'
         path.write_text(path.read_text().replace('  workflow_dispatch:',"  schedule:\n    - cron: '* * * * *'\n  workflow_dispatch:"))
         with self.assertRaises(ValueError):policy.verify(self.root)

@@ -1,6 +1,8 @@
 name: Owned repository offline smoke
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '53 3 * * *'
 permissions:
   contents: read
 concurrency:

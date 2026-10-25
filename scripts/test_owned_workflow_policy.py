@@ -21,10 +21,50 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             shutil.copy2(ROOT/relative,dest)
     def test_actual_checkout(self):
         result=policy.verify(ROOT)
-        self.assertEqual(result['active_schedules'], 1 if policy.STAGE == policy.MANUAL_STAGE else 2)
-        self.assertEqual(len(result['active_manual_workflows']), 8 if policy.STAGE == policy.MANUAL_STAGE else 7)
+        self.assertEqual(result['active_schedules'], 2 if policy.STAGE == policy.MANUAL_STAGE else 3)
+        self.assertEqual(len(result['active_manual_workflows']), 7 if policy.STAGE == policy.MANUAL_STAGE else 6)
         self.assertEqual(result['archived_workflows'],30)
         self.assertFalse(result['production_recovered'])
+    def test_smoke_daily_stage_and_exact_readonly_execution(self):
+        result = policy.verify(ROOT)
+        self.assertEqual(result['smoke_stage'], 'owned-repository-offline-smoke-daily-v1')
+        self.assertNotIn('.github/workflows/owned-repo-smoke.yml', result['active_manual_workflows'])
+        text = (ROOT / '.github/workflows/owned-repo-smoke.yml').read_text()
+        doc = yaml.safe_load(text)
+        self.assertEqual(doc.get('on', doc.get(True)), {
+            'workflow_dispatch': None, 'schedule': [{'cron': '53 3 * * *'}]})
+        self.assertEqual(doc['permissions'], {'contents': 'read'})
+        self.assertEqual(set(doc['jobs']), {'offline-smoke'})
+        job = doc['jobs']['offline-smoke']
+        self.assertEqual(job['timeout-minutes'], 10)
+        self.assertEqual(job['if'], "github.repository == 'coarfamily-cyber/jarvis-luna' && github.ref == 'refs/heads/main'")
+        self.assertNotIn('environment', job)
+        self.assertFalse(job['steps'][0]['with']['persist-credentials'])
+        self.assertIn('--require-hashes --only-binary=:all:', job['steps'][2]['run'])
+        self.assertIn('socket.create_connection = deny', job['steps'][4]['run'])
+        self.assertEqual(job['steps'][4]['run'].count("'test_"), 9)
+        for forbidden in ('secrets.', 'contents: write', 'actions: write', 'upload-artifact',
+                          'run_jarvis_operations.py', 'run_jarvis_agents.py'):
+            self.assertNotIn(forbidden, text)
+
+    def test_smoke_exact_semantics_even_if_mutated_bytes_registered(self):
+        path = self.root / '.github/workflows/owned-repo-smoke.yml'
+        original = path.read_text()
+        for old, new in [("53 3 * * *", "53 * * * *"),
+                         ('  workflow_dispatch:', '  push:\n  workflow_dispatch:'),
+                         ('contents: read', 'contents: write')]:
+            with self.subTest(mutation=old):
+                path.write_text(original.replace(old, new), encoding='utf-8', newline='\n')
+                raw = path.read_bytes()
+                reviewed = dict(policy.EXPECTED)
+                reviewed['.github/workflows/owned-repo-smoke.yml'] = {
+                    'blob': hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest(),
+                    'mode': '100644'}
+                with patch.object(policy, 'EXPECTED', reviewed):
+                    with self.assertRaisesRegex(ValueError, 'exact_daily_offline_smoke_policy_required'):
+                        policy.verify(self.root)
+        path.write_text(original, encoding='utf-8', newline='\n')
+
     def test_exact_v3_active_set(self):
         result=policy.verify(ROOT)
         self.assertEqual(result['stage'],policy.STAGE)
@@ -256,11 +296,11 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
     def test_named_manual_profile(self):
         self.producer_profile(False)
         with patch.object(policy, 'STAGE', policy.MANUAL_STAGE):
-            self.assertEqual(policy.verify(self.root)['active_schedules'],1)
+            self.assertEqual(policy.verify(self.root)['active_schedules'],2)
     def test_named_hourly_profile(self):
         self.producer_profile(True)
         with patch.object(policy, 'STAGE', policy.HOURLY_STAGE):
-            self.assertEqual(policy.verify(self.root)['active_schedules'],2)
+            self.assertEqual(policy.verify(self.root)['active_schedules'],3)
     def test_manual_stage_rejects_hourly_bytes(self):
         self.producer_profile(True)
         with patch.object(policy, 'STAGE', policy.MANUAL_STAGE):
