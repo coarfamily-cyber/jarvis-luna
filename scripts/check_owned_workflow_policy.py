@@ -1,4 +1,4 @@
-"""Exact owned-repository durable-local-v3 policy; no execution or mutation.
+"""Exact durable-local-v3 plus reviewed knowledge-data-v1 policy; no execution or mutation.
 
 Legacy assertions use separate temporary fixture views, never this active view.
 Updating active workflow bytes requires an explicit reviewed policy version.
@@ -13,6 +13,10 @@ MANUAL_STAGE = 'owned-repository-durable-manual-verification-v3'
 HOURLY_STAGE = 'owned-repository-durable-local-v3'
 # This source constant is reviewed per deployment; no CLI/environment override.
 STAGE = HOURLY_STAGE
+# Separately reviewed information-only lane; existing core authority is unchanged.
+KNOWLEDGE_STAGE = 'owned-real-knowledge-data-only-v1'
+KNOWLEDGE_WORKFLOW = '.github/workflows/owned-real-knowledge-sync.yml'
+KNOWLEDGE_GUARD = "github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.repository_owner_id == '280980688' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && (github.event_name == 'schedule' || inputs.expected_sha == github.sha)"
 PRODUCER_PATH = '.github/workflows/owned-core-local.yml'
 PRODUCER_BLOBS = {MANUAL_STAGE: '4154e610c3a93ab626c72452a48df6449ad959d3',
                   HOURLY_STAGE: 'b1cacb160c3c80ebe21dda50a046b31e00810cd4'}
@@ -20,7 +24,7 @@ SOURCE_SNAPSHOT = '1e6a9b361fd9f3d6b32c291a9bf7a54212bba120'
 TARGET_BASE = '6ad0711c4c9ba1531ac885a3bdb2f340da5c8121'
 # Reviewed manual-only fresh catalog observation; no new schedule or writer.
 # Existing owner-authorized manual shipping lane; registration is not execution approval.
-EXPECTED = {'.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '635d1c38d25d8395af84e04a7c33d5c371009a1b', 'mode': '100644'},
+EXPECTED = {KNOWLEDGE_WORKFLOW: {'blob': '4c15f104549314acced44cd8f92f9282eacf4930', 'mode': '100644'}, '.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '635d1c38d25d8395af84e04a7c33d5c371009a1b', 'mode': '100644'},
  '.github/workflows/owned-technical-review-report.yml': {'blob': '19392daff1cf47e61b32940a988027316bae1d30', 'mode': '100644'},
  '.github/workflows/owned-fx-readonly-observation.yml': {'blob': '5f8c73fe7f8e0a77a47d944521ea617ef773a37d', 'mode': '100644'},
  '.github/workflows/owned-shopify-team-observation.yml': {'blob': '7375fe80e2d48d5d4b059da51b7cb7bb79176c47', 'mode': '100644'},
@@ -106,7 +110,7 @@ EXPECTED = {'.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '63
  '.github/workflows/jekyll-gh-pages.yml.disabled': {'blob': '67be9b00bb678d6dcb059ad708b2130499bca1e9',
                                                     'mode': '100644'},
  # Reviewed owner-audit home-card Pages bytes v2; all execution policies remain unchanged.
- '.github/workflows/owned-pages-once.yml': {'blob': '45e66bbbd8eba0e6a7b9039eb8b71ee8c7720bdb',
+ '.github/workflows/owned-pages-once.yml': {'blob': 'ae6e5b783ed921aa451fb4810646e70c0a72ffcf',
                                             'mode': '100644'},
  '.github/workflows/owned-repo-smoke.yml': {'blob': '7a5b93b3b97af5b6b3a3a32293db6b232d9a142d',
                                             'mode': '100644'},
@@ -121,6 +125,8 @@ EXPECTED = {'.github/workflows/owned-shopify-us-free-shipping.yml': {'blob': '63
 
 
 def verify(root):
+    if KNOWLEDGE_STAGE != 'owned-real-knowledge-data-only-v1':
+        raise ValueError('unknown_knowledge_policy_stage')
     if STAGE not in PRODUCER_BLOBS:
         raise ValueError('unknown_workflow_policy_stage')
     expected = dict(EXPECTED)
@@ -165,6 +171,54 @@ def verify(root):
                         schedules += 1
                     else:
                         manual_docs.append(rel)
+                elif path.name == 'owned-real-knowledge-sync.yml':
+                    knowledge_events = {
+                        'workflow_dispatch': {'inputs': {'expected_sha': {
+                            'description': 'Exact reviewed main commit', 'required': True, 'type': 'string'}}},
+                        'schedule': [{'cron': '37 0,6,12,18 * * *'}]}
+                    jobs = doc.get('jobs', {})
+                    job = jobs.get('sync', {})
+                    if (event != knowledge_events or doc.get('permissions') != {} or
+                            set(jobs) != {'sync'} or job.get('permissions') != {'contents': 'write', 'actions': 'read'} or
+                            job.get('if') != KNOWLEDGE_GUARD or job.get('runs-on') != 'ubuntu-latest' or
+                            job.get('timeout-minutes') != 15 or 'environment' in job or
+                            doc.get('concurrency') != {'group': 'owned-real-knowledge-sync', 'cancel-in-progress': False}):
+                        raise ValueError('exact_knowledge_data_only_policy_required')
+                    steps = job.get('steps', [])
+                    names = ['Install only hash-pinned policy validation dependency',
+                             'Verify reviewed knowledge-only helper',
+                             'Offline knowledge and workflow boundary tests',
+                             'Prepare fixed knowledge-state baseline',
+                             'Collect credential-free public knowledge',
+                             'Publish only fixed data branch',
+                             'Propagate partial collection failure']
+                    if (len(steps) != 9 or [s.get('name') for s in steps[2:]] != names or
+                            steps[0].get('uses') != 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' or
+                            steps[0].get('with', {}).get('persist-credentials') is not False or
+                            steps[0].get('with', {}).get('ref') != '${{ github.sha }}' or
+                            steps[1].get('uses') != 'actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97'):
+                        raise ValueError('knowledge_exact_steps_required')
+                    out = '"$RUNNER_TEMP/owned-real-knowledge-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"'
+                    commands = {
+                        'Prepare fixed knowledge-state baseline': 'python -I -B scripts/owned_real_knowledge_sync.py prepare --root "$GITHUB_WORKSPACE" --out ' + out,
+                        'Collect credential-free public knowledge': 'timeout --signal=TERM --kill-after=5s 180s python -I -B scripts/owned_real_knowledge_sync.py collect --root "$GITHUB_WORKSPACE" --out ' + out,
+                        'Publish only fixed data branch': 'python -I -B scripts/owned_real_knowledge_sync.py publish --root "$GITHUB_WORKSPACE" --out ' + out,
+                        'Propagate partial collection failure': 'python -I -B scripts/owned_real_knowledge_sync.py assert-complete --out ' + out}
+                    for step in steps:
+                        if step.get('continue-on-error') or step.get('if'):
+                            raise ValueError('knowledge_failure_must_propagate')
+                        if step.get('name') in commands and step.get('run') != commands[step['name']]:
+                            raise ValueError('knowledge_fixed_command_required')
+                        token = (step.get('env') or {}).get('GITHUB_TOKEN')
+                        privileged = step.get('name') in ('Prepare fixed knowledge-state baseline', 'Publish only fixed data branch')
+                        if (privileged and token != '${{ github.token }}') or (not privileged and token not in (None, '')):
+                            raise ValueError('knowledge_credential_isolation_required')
+                    text = raw.decode('utf-8')
+                    if 'secrets.' in text or './.github/actions/publish' in text or any(x in text for x in (
+                            'publish_transaction.py', 'generate_dashboard_runtime.py', 'run_jarvis_operations.py',
+                            'run_jarvis_agents.py', 'train_real_knowledge.py', 'tune_real_knowledge_moe.py')):
+                        raise ValueError('knowledge_broad_execution_forbidden')
+                    schedules += 1
                 elif path.name == 'owned-core-ledger-publisher.yml':
                     expected_events = {
                         'workflow_run': {'workflows': ['Owned Core local saved-input epoch'],
@@ -220,7 +274,7 @@ def verify(root):
                 active_docs.append(rel)
     if actual != expected:
         raise ValueError('workflow_inventory_changed')
-    return {'stage': STAGE, 'scope': 'actual_checkout_quarantine_policy',
+    return {'stage': STAGE, 'knowledge_stage': KNOWLEDGE_STAGE, 'scope': 'actual_checkout_quarantine_policy',
             'active_workflows': sorted(active_docs),
             'active_manual_workflows': sorted(manual_docs), 'archived_workflows': 30,
             'active_schedules': schedules, 'production_recovered': False}
