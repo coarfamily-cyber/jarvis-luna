@@ -881,7 +881,10 @@ def build_us_label(pd_no, name_kr, g):
     else:
         reasons.append("net_contents_missing_or_invalid")
     origin = ORIGIN_EN.get(_clean(g.get("origin")).lower().replace(" ", "")) or ORIGIN_EN.get(_clean(g.get("origin")).lower())
-    if origin:
+    if disclosure["origin_hold"]:
+        # A mapped retailer value does not resolve a known supplied-unit conflict.
+        reasons.append("origin_source_conflict_requires_label_review")
+    elif origin:
         label["origin"] = origin
     else:
         reasons.append("origin_unmapped")
@@ -2405,10 +2408,21 @@ def main():
                  "net_contents": label["label"].get("net_contents") or g.get("volume") or ""},
                 {"title": title, "description_html": html},
                 {"title": neutral_title, "description_html": neutral_html}, ROOT)
+            # Do not let source-name/model copy reintroduce a known disputed
+            # physical quantity after the final evidence-based copy selection.
+            # Original p/g and earlier pricing inputs remain untouched.
+            guarded_copy = supplier_notice_disclosures.hold_conflicting_quantity_copy(p["pdNo"], selected_copy)
+            accuracy["quantity_conflict_copy_guard_applied"] = guarded_copy != selected_copy
+            selected_copy = guarded_copy
+            accuracy["selected_copy_sha256"] = hashlib.sha256(json.dumps(
+                selected_copy, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                allow_nan=False).encode()).hexdigest()
             title, html = selected_copy["title"], selected_copy["description_html"]
             accuracy["input_copy_review"] = input_accuracy
             accuracy["fallback_used"] = bool(accuracy["fallback_used"] or input_accuracy["fallback_used"] or claims_filtered)
-            accuracy["scope"] = "recorded_source_consistency_and_exact_base_copy_support_only"
+            accuracy["scope"] = ("recorded_source_consistency_and_pre_quantity_guard_copy_support_only"
+                                 if accuracy["quantity_conflict_copy_guard_applied"] else
+                                 "recorded_source_consistency_and_exact_base_copy_support_only")
             accuracy["excluded_sections"] = ["us_label", "retailer_source_marker"]
             claims_left = has_claims(title, html)
             html = html + label["html"]

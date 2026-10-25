@@ -1167,6 +1167,41 @@ class DailySafetyTests(unittest.TestCase):
         shop.set_status.assert_not_called()
         shop.publish.assert_not_called()
 
+    def test_known_quantity_guard_runs_after_selected_model_copy_without_price_or_source_edits(self):
+        selected = {'title': 'Blistex PDRN 300 Balm 4.25g',
+                    'description_html': '<p>Balm 4.25g, PDRN 300, 50%, pack 2.</p>'}
+        before = copy.deepcopy(selected)
+        source = {}
+        real_select = daily.product_accuracy.select_copy
+        def selected_model(product, candidate, fallback, root, **kwargs):
+            _, report = real_select(product, fallback, fallback, root, **kwargs)
+            return copy.deepcopy(selected), report
+        def pick(candidate):
+            candidate.update(pdNo='1076498', pdNm='블리스텍스 립밤 4.25g')
+            source.update(copy.deepcopy(candidate))
+            return [candidate]
+        price = self._ok_pricing(); price_before = copy.deepcopy(price)
+        with patch.object(daily.product_accuracy, 'select_copy', side_effect=selected_model):
+            _, result, registry, shop = self._run_main(price, pick)
+        record = result['results'][0]
+        self.assertEqual(selected, before)
+        self.assertEqual(price, price_before)
+        self.assertEqual(registry['items'][0]['name_kr'], source['pdNm'])
+        self.assertEqual(record['status'], 'created_draft')
+        self.assertNotIn('4.25g', record['title'])
+        self.assertIn('net contents unverified', record['description_html'])
+        for kept in ('PDRN 300', '50%', 'pack 2', '<p>INCI.</p>'):
+            self.assertIn(kept, record['description_html'])
+        guarded = daily.supplier_notice_disclosures.hold_conflicting_quantity_copy('1076498', selected)
+        self.assertEqual(record['product_accuracy']['selected_copy_sha256'],
+                         daily.product_accuracy._copy_digest(guarded))
+        self.assertTrue(record['product_accuracy']['quantity_conflict_copy_guard_applied'])
+        self.assertFalse(record['product_accuracy']['publication_allowed'])
+        item = shop.create.call_args[0][0]
+        self.assertEqual(item['variants'][0]['price'], price_before['single']['price_usd'])
+        shop.set_status.assert_not_called()
+        shop.publish.assert_not_called()
+
     def test_scraped_label_values_cannot_inject_markup_after_copy_review(self):
         resolver = MagicMock()
         resolver.to_inci.return_value = ("Water", [], [], [])

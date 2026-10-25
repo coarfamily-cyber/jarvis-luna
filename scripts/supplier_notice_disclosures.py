@@ -10,10 +10,17 @@ import stat
 import re
 from decimal import Decimal
 
-# Observed 2026-10-24: current supplier data has competing formulas/quantities.
+# Observed 2026-10-24/25: supplier data has competing formulas/quantities/origin.
 # Removal requires a separately reviewed actual-stock/source reconciliation.
-OPEN_CONFLICTS = {'1067498': 'supplier_formula_actual_stock_unresolved',
-                  '1025282': 'supplier_net_contents_conflict_unresolved'}
+OPEN_CONFLICTS = {
+    '1067498': ('supplier_formula_actual_stock_unresolved',),
+    '1025282': ('supplier_net_contents_conflict_unresolved',),
+    # Dr.CPU: supplier package 60 ml versus archived catalogue 60 g.
+    '1084687': ('supplier_net_contents_conflict_unresolved',),
+    # Blistex: 4.25 g versus approximately 4.5 g; USA versus Korea.
+    '1076498': ('supplier_net_contents_conflict_unresolved',
+                'supplier_origin_conflict_unresolved'),
+}
 FORMULAS = re.compile(r'신형|구형|리뉴얼\s*(?:전|후)|(?:old|new)\s+formula', re.I)
 ML = re.compile(r'(?<![\d.])(\d+(?:\.\d+)?)\s*m[lL]\b', re.I)
 
@@ -23,7 +30,7 @@ def inspect(pd_no, name, notice):
     if notice.get('_supplier_disclosure_conflict') is True:
         reasons.append('supplier_disclosure_versions_conflict')
     if str(pd_no) in OPEN_CONFLICTS:
-        reasons.append(OPEN_CONFLICTS[str(pd_no)])
+        reasons.extend(OPEN_CONFLICTS[str(pd_no)])
     source = {key: notice.get(key, '') for key in
               ('usage', 'warnings', 'color', 'ingredients', 'volume', 'source_notice_text')}
     for key, heading in [('usage', 'Directions'), ('warnings', 'Warnings'), ('color', 'Color')]:
@@ -46,9 +53,65 @@ def inspect(pd_no, name, notice):
                 sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
             'formula_hold': any('formula' in r for r in reasons),
             'volume_hold': any('volume_conflict' in r or 'net_contents_conflict' in r for r in reasons),
+            'origin_hold': any('origin_conflict' in r for r in reasons),
             'retained_supplier_snapshot_sha256': notice.get('_retained_disclosure_sha256'),
             'human_approved': False, 'physical_label_verified': False,
             'publication_allowed': False}
+
+
+
+# Exact disputed source quantities only. Never strip unrelated model numbers,
+# percentages, bundle counts, ingredients, or the original product/source record.
+_QUANTITY_COPY_PATTERNS = {
+    '1084687': re.compile(r'(?<![\w.])60\s*(?:ml|millilit(?:er|re)s?|g|grams?)(?![\w])'
+        r'(?:\s*\(\s*2\.0[23]\s*fl\.?\s*oz\s*\))?', re.I),
+    '1076498': re.compile(r'(?<![\w.])4\.(?:25|5)\s*(?:g|grams?)(?![\w])'
+        r'(?:\s*\(\s*0\.1[56]\s*oz\s*\))?', re.I),
+}
+
+
+def _hold_quantity_text_nodes(body, pattern):
+    """Map rendered text back to original text-node spans; retain markup bytes."""
+    from html import unescape
+    parts = re.split(r"""(<(?:[^>"']|"[^"]*"|'[^']*')*>)""", body)
+    visible, positions = [], []
+    for index in range(0, len(parts), 2):
+        raw = parts[index]
+        for token in re.finditer(r'&(?:#[0-9]+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);|.', raw, re.S):
+            decoded = unescape(token.group())
+            visible.extend(decoded)
+            positions.extend([(index, token.start(), token.end())] * len(decoded))
+    matches = list(pattern.finditer(''.join(visible)))
+    # Backwards edits leave earlier raw offsets stable, even across emphasis tags.
+    for match in reversed(matches):
+        spans = {}
+        for index, start, end in positions[match.start():match.end()]:
+            if index not in spans:
+                spans[index] = [start, end]
+            else:
+                spans[index][0] = min(spans[index][0], start)
+                spans[index][1] = max(spans[index][1], end)
+        first = min(spans)
+        for index, (start, end) in spans.items():
+            replacement = 'net contents unverified' if index == first else ''
+            parts[index] = parts[index][:start] + replacement + parts[index][end:]
+    return ''.join(parts)
+
+
+def hold_conflicting_quantity_copy(pd_no, selected_copy):
+    """Limit customer-facing copy, not source identity or registration authority."""
+    from copy import deepcopy
+    out = deepcopy(selected_copy)
+    pattern = _QUANTITY_COPY_PATTERNS.get(str(pd_no))
+    if pattern is None or not isinstance(out, dict):
+        return out
+    title = out.get('title')
+    if isinstance(title, str) and pattern.search(title):
+        out['title'] = ' '.join(pattern.sub('', title).split()) + ' (net contents unverified)'
+    body = out.get('description_html')
+    if isinstance(body, str):
+        out['description_html'] = _hold_quantity_text_nodes(body, pattern)
+    return out
 
 
 def with_retained_supplier_text(root, pd_no, notice):

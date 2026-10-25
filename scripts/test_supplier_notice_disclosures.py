@@ -92,4 +92,96 @@ class DisclosureTests(unittest.TestCase):
         self.assertNotIn('Ingredients (INCI)',result['html'])
         self.assertIn('inci_unresolved:1',result['reasons'])
 
+    def test_recorded_quantity_conflicts_survive_self_declared_approval(self):
+        for pd, name, volume in [('1084687', 'Dr.CPU cream 60g', '60ml'),
+                                 ('1076498', 'Blistex Lip Balm 4.25g', '4.25g')]:
+            with self.subTest(pd=pd):
+                notice = {'volume': volume, 'origin': '한국', 'human_approved': True,
+                          'physical_label_verified': True, 'volume_hold': False,
+                          'origin_hold': False, 'publication_allowed': True}
+                before = copy.deepcopy(notice)
+                result = disclosure.inspect(pd, name, notice)
+                self.assertTrue(result['volume_hold'])
+                self.assertIn('supplier_net_contents_conflict_unresolved', result['reasons'])
+                self.assertFalse(result['physical_label_verified'])
+                self.assertFalse(result['human_approved'])
+                self.assertFalse(result['publication_allowed'])
+                self.assertEqual(notice, before)
+
+    def test_blistex_origin_conflict_cannot_choose_either_supplier_version(self):
+        import daiso_daily_beauty_to_shopify as daily
+        resolver = Mock(); resolver.to_inci.return_value = ('Water', [], [], [])
+        for origin, volume in [('한국', '4.25g'), ('미국', '4.5g')]:
+            with self.subTest(origin=origin), patch.object(daily, '_inci_resolver', return_value=(resolver, Mock())):
+                source = {'ingredients': '정제수', 'volume': volume, 'origin': origin, 'maker': 'Blistex'}
+                before = copy.deepcopy(source)
+                result = daily.build_us_label('1076498', 'Blistex Lip Balm', source)
+                self.assertNotIn('origin', result['label'])
+                self.assertNotIn('net_contents', result['label'])
+                self.assertNotIn('<strong>Country of origin:</strong>', result['html'])
+                self.assertIn('Source verification pending.', result['html'])
+                self.assertIn('supplier_origin_conflict_unresolved', result['reasons'])
+                self.assertIn('supplier_net_contents_conflict_unresolved', result['reasons'])
+                self.assertEqual(source, before)
+
+    def test_dr_cpu_mass_volume_conflict_cannot_be_reintroduced_by_renderer(self):
+        import daiso_daily_beauty_to_shopify as daily
+        resolver = Mock(); resolver.to_inci.return_value = ('Water', [], [], [])
+        for volume in ('60g', '60ml'):
+            with self.subTest(volume=volume), patch.object(daily, '_inci_resolver', return_value=(resolver, Mock())):
+                result = daily.build_us_label('1084687', 'Dr.CPU cream', {'volume': volume})
+                self.assertNotIn('net_contents', result['label'])
+                self.assertIn('Source verification pending.', result['html'])
+                self.assertTrue(result['supplier_disclosure']['volume_hold'])
+
+    def test_unaffected_source_origin_stays_source_value_without_sales_authority(self):
+        import daiso_daily_beauty_to_shopify as daily
+        resolver = Mock(); resolver.to_inci.return_value = ('Water', [], [], [])
+        with patch.object(daily, '_inci_resolver', return_value=(resolver, Mock())):
+            result = daily.build_us_label('999', 'Cream 30ml', {'volume': '30ml', 'origin': '한국'})
+        self.assertEqual(result['label']['origin'], 'Korea')
+        self.assertIn('30ml', result['label']['net_contents'])
+        self.assertFalse(result['supplier_disclosure']['origin_hold'])
+        self.assertFalse(result['supplier_disclosure']['publication_allowed'])
+
+    def test_quantity_copy_guard_is_exact_text_only_and_idempotent(self):
+        for pd, amount in [('1084687', '60 ml'), ('1076498', '4.25 g')]:
+            with self.subTest(pd=pd):
+                source = {'title': 'PDRN 300 50% Cream ' + amount,
+                          'description_html': '<p>Cream ' + amount + '; PDRN 300; 50%; 160g; pack 2.</p>'
+                            '<a href="https://example.invalid/4.25g/60ml">source</a>'
+                            '<img src="/4.25g.png" alt="60ml source photo">',
+                          'ingredients': 'Water 50%', 'price': 21.99,
+                          'origin': 'supplier Korea', 'images': ['4.25g.png']}
+                before = copy.deepcopy(source)
+                guarded = disclosure.hold_conflicting_quantity_copy(pd, source)
+                self.assertEqual(source, before)
+                self.assertNotIn(amount, guarded['title'])
+                self.assertIn('(net contents unverified)', guarded['title'])
+                self.assertIn('<p>Cream net contents unverified;', guarded['description_html'])
+                for kept in ('PDRN 300', '50%', '160g', 'pack 2',
+                             'https://example.invalid/4.25g/60ml', 'alt="60ml source photo"'):
+                    self.assertIn(kept, guarded['description_html'])
+                for field in ('ingredients', 'price', 'origin', 'images'):
+                    self.assertEqual(guarded[field], before[field])
+                self.assertEqual(disclosure.hold_conflicting_quantity_copy(pd, guarded), guarded)
+                self.assertEqual(disclosure.hold_conflicting_quantity_copy('999', source), source)
+
+    def test_quantity_guard_handles_conversion_entities_and_emphasis_not_attributes(self):
+        cases = [('1084687', '60 mL (2.03 fl oz)'), ('1084687', '60 mL (2.02 fl oz)'),
+                 ('1076498', '4.25g (0.15 oz)'), ('1076498', '4.5g (0.16 oz)')]
+        for pd, amount in cases:
+            with self.subTest(pd=pd, amount=amount):
+                body = '<p>' + amount.replace(' ', '&nbsp;').replace('g', '<strong>g</strong>') + '</p>'
+                source = {'title': 'Cream ' + amount, 'description_html': body +
+                          '<a href="https://example.invalid/?x=>60ml">source</a>'}
+                result = disclosure.hold_conflicting_quantity_copy(pd, source)
+                self.assertNotIn('oz', result['title'])
+                self.assertNotIn('oz', result['description_html'])
+                self.assertIn('net contents unverified', result['description_html'])
+                self.assertIn('<a href="https://example.invalid/?x=>60ml">source</a>', result['description_html'])
+                if '<strong>' in body:
+                    self.assertIn('<strong></strong>', result['description_html'])
+                self.assertEqual(disclosure.hold_conflicting_quantity_copy(pd, result), result)
+
 if __name__=='__main__':unittest.main()
