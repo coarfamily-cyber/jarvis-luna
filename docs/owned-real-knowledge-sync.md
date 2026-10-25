@@ -1,4 +1,4 @@
-# Owned real-knowledge data synchronization v1
+# Owned real-knowledge data synchronization v2
 
 ## Scope
 
@@ -16,6 +16,12 @@ opaque text, without completion or fetching; actionable record/request/provenanc
 URLs and credential checks stay strict. It does not run model training, promote model
 weights, regenerate Obsidian, rebuild the operational dashboard, register products,
 modify Shopify, run advertisements, or grant business authority.
+
+The main baseline is resolved only through the fixed nonrecursive Git-tree path
+`data/knowledge/training_corpus.jsonl`. Every tree level must be complete and
+match its expected SHA, path segment, object type and mode. A truncated whole-main
+recursive listing is never accepted or needed. The dedicated data branch still
+uses its complete recursive tree and strict data-only path allowlist.
 
 ## Isolation from concurrent main edits
 
@@ -61,7 +67,7 @@ uploaded, avoiding additional artifact-storage usage.
 ## Safety policy
 
 The existing Core stage and all 30 quarantined workflows remain unchanged. The
-separate `owned-real-knowledge-data-only-v1` policy pins this one new workflow and
+separate `owned-real-knowledge-data-only-v2` policy pins this one new workflow and
 keeps all unrelated workflows manual-only. Pages' literal workflow inventory is
 updated, but its 36-file projection, site hash and `production_recovered=false`
 assertions remain intact. Any change to reviewed helper bytes requires a matching

@@ -53,13 +53,18 @@ class FakeAPI:
             raise TimeoutError("offline simulated unknown")
         return self.current
 
+    def main_baseline(self, source_sha):
+        if source_sha != "a" * 40:
+            raise sync.SyncError("wrong fixture source commit")
+        return self.baseline
+
     def tree(self, commit):
         if commit == "a" * 40:
-            return {"truncated": False, "tree": [{"path": "data/knowledge/training_corpus.jsonl", "type": "blob", "mode": "100644", "sha": "2" * 40}]}
+            raise AssertionError("main recursive tree must never be requested")
         return {"truncated": False, "tree": [{"path": k, "sha": v, "type": "blob", "mode": "100644"} for k, v in self.previous.items()]}
 
     def blob(self, blob_sha, cap):
-        return self.baseline if blob_sha == "2" * 40 else self.seed
+        return self.seed
 
     def call(self, method, suffix, body=None):
         self.calls.append((method, suffix, body))
@@ -77,6 +82,42 @@ class FakeAPI:
                 raise TimeoutError("response lost")
             return {"object": {"sha": self.current}}
         raise AssertionError((method, suffix))
+
+
+class BaselineAdapter:
+    """Fake HTTP adapter exercised through the real GitHubAPI transport methods."""
+    def __init__(self, seed):
+        self.urls = []
+        self.source = "a" * 40
+        self.tree_shas = ("1" * 40, "2" * 40, "3" * 40)
+        self.commit_path = "/git/commits/" + self.source
+        self.tree_paths = ["/git/trees/" + value for value in self.tree_shas]
+        self.blob_sha = sync.hashlib.sha1(b"blob " + str(len(seed)).encode() + b"\0" + seed).hexdigest()
+        self.blob_path = "/git/blobs/" + self.blob_sha
+        self.docs = {
+            "": {"id": int(sync.REPO_ID), "full_name": sync.REPO, "owner": {"id": int(sync.OWNER_ID)}},
+            self.commit_path: {"sha": self.source, "tree": {"sha": self.tree_shas[0]}},
+            self.blob_path: {"sha": self.blob_sha, "size": len(seed), "encoding": "base64", "content": base64.b64encode(seed).decode()}}
+        for index, (path, segment) in enumerate(zip(self.tree_paths, ("data", "knowledge", "training_corpus.jsonl"))):
+            final = index == 2
+            self.docs[path] = {"sha": self.tree_shas[index], "truncated": False, "tree": [
+                {"path": segment, "type": "blob" if final else "tree", "mode": "100644" if final else "040000",
+                 "sha": self.blob_sha if final else self.tree_shas[index + 1]}]}
+
+    @property
+    def walk_urls(self):
+        return [sync.API + suffix for suffix in [self.commit_path] + self.tree_paths + [self.blob_path]]
+
+    def __call__(self, req, timeout):
+        self.urls.append(req.full_url)
+        if req.get_method() != "GET" or req.data is not None or timeout != 30:
+            raise AssertionError("baseline walk must be bounded read-only GETs")
+        if req.full_url == sync.API + "/git/ref/heads/" + sync.BRANCH:
+            raise urllib.error.HTTPError(req.full_url, 404, "no data branch", {}, io.BytesIO(b"{}"))
+        matches = [suffix for suffix in self.docs if sync.API + suffix == req.full_url]
+        if len(matches) != 1:
+            raise AssertionError("unexpected URL/fallback: " + req.full_url)
+        return Response(sync.encode(self.docs[matches[0]]), req.full_url)
 
 
 class FakeCollectors:
@@ -149,6 +190,106 @@ class OfflineTests(unittest.TestCase):
                          ("GITHUB_API_URL", "https://evil.example")):
             with self.subTest(key=key), self.assertRaises(sync.SyncError):
                 sync.context({**self.env, key: bad})
+
+    def test_main_baseline_uses_only_fixed_nonrecursive_url_sequence(self):
+        adapter = BaselineAdapter(self.seed)
+        api = sync.GitHubAPI(token="offline-not-real", adapter=adapter)
+        self.assertEqual(api.main_baseline(self.env["GITHUB_SHA"]), self.seed)
+        self.assertEqual(adapter.urls, adapter.walk_urls)
+        self.assertTrue(all("?" not in url for url in adapter.urls))
+
+    def test_prepare_resolves_baseline_via_real_transport_without_main_scan(self):
+        adapter = BaselineAdapter(self.seed)
+        api = sync.GitHubAPI(token="offline-not-real", adapter=adapter)
+        result = sync.prepare(self.out, self.out, api=api, env=self.env)
+        self.assertEqual(result["baseline_records"], 2)
+        self.assertEqual((self.out / "baseline.jsonl").read_bytes(), self.seed)
+        self.assertEqual(adapter.urls, [sync.API] + adapter.walk_urls + [sync.API + "/git/ref/heads/" + sync.BRANCH])
+
+    def test_main_walk_rejects_truncated_missing_duplicate_and_wrong_modes(self):
+        for level in range(3):
+            for mutation in ("truncated", "missing_truncation", "missing", "duplicate", "wrong_mode", "symlink", "wrong_type", "invalid_sha", "wrong_tree", "recursive_entry", "wrong_case"):
+                with self.subTest(level=level, mutation=mutation):
+                    adapter = BaselineAdapter(self.seed)
+                    doc = adapter.docs[adapter.tree_paths[level]]
+                    entry = doc["tree"][0]
+                    if mutation == "truncated":
+                        doc["truncated"] = True
+                    elif mutation == "missing_truncation":
+                        del doc["truncated"]
+                    elif mutation == "missing":
+                        doc["tree"] = []
+                    elif mutation == "duplicate":
+                        doc["tree"].append(dict(entry))
+                    elif mutation == "wrong_mode":
+                        entry["mode"] = "100755" if level == 2 else "100644"
+                    elif mutation == "symlink":
+                        entry.update(mode="120000", type="blob")
+                    elif mutation == "wrong_type":
+                        entry["type"] = "commit"
+                    elif mutation == "invalid_sha":
+                        entry["sha"] = "not-a-sha"
+                    elif mutation == "wrong_tree":
+                        doc["sha"] = "9" * 40
+                    elif mutation == "recursive_entry":
+                        doc["tree"].append({"path": "unexpected/nested", "type": "blob", "mode": "100644", "sha": "b" * 40})
+                    elif mutation == "wrong_case":
+                        entry["path"] = entry["path"].upper()
+                    api = sync.GitHubAPI(token="offline-not-real", adapter=adapter)
+                    with self.assertRaises(sync.SyncError):
+                        api.main_baseline(self.env["GITHUB_SHA"])
+                    self.assertEqual(adapter.urls, adapter.walk_urls[:level + 2])
+                    self.assertFalse(any("?" in url for url in adapter.urls))
+
+    def test_main_walk_rejects_wrong_source_commit_and_tree_binding(self):
+        for mutation in ("wrong_source", "missing_source", "invalid_root_sha", "missing_root", "different_root"):
+            with self.subTest(mutation=mutation):
+                adapter = BaselineAdapter(self.seed)
+                commit = adapter.docs[adapter.commit_path]
+                if mutation == "wrong_source":
+                    commit["sha"] = "b" * 40
+                elif mutation == "missing_source":
+                    del commit["sha"]
+                elif mutation == "invalid_root_sha":
+                    commit["tree"]["sha"] = "invalid"
+                elif mutation == "missing_root":
+                    del commit["tree"]
+                else:
+                    # A different valid tree is not a fallback source root: it
+                    # fails the exact first segment, with no recursive recovery.
+                    commit["tree"]["sha"] = adapter.tree_shas[1]
+                api = sync.GitHubAPI(token="offline-not-real", adapter=adapter)
+                with self.assertRaises(sync.SyncError):
+                    api.main_baseline(self.env["GITHUB_SHA"])
+                expected = [sync.API + adapter.commit_path]
+                if mutation == "different_root":
+                    expected.append(sync.API + adapter.tree_paths[1])
+                self.assertEqual(adapter.urls, expected)
+
+    def test_main_nonrecursive_entry_cap_applies_at_each_level(self):
+        for level in range(3):
+            with self.subTest(level=level):
+                adapter = BaselineAdapter(self.seed)
+                adapter.docs[adapter.tree_paths[level]]["tree"].append({"path": "other", "type": "blob", "mode": "100644", "sha": "b" * 40})
+                api = sync.GitHubAPI(token="offline-not-real", adapter=adapter)
+                with patch.object(sync, "MAX_FILES", 1), self.assertRaises(sync.SyncError):
+                    api.main_baseline(self.env["GITHUB_SHA"])
+                self.assertEqual(adapter.urls, adapter.walk_urls[:level + 2])
+
+    def test_data_branch_tree_still_uses_recursive_strict_validation(self):
+        adapter = BaselineAdapter(self.seed)
+        recursive_path = adapter.tree_paths[0] + "?recursive=1"
+        adapter.docs[recursive_path] = {"sha": adapter.tree_shas[0], "truncated": False,
+                                      "tree": [{"path": "scripts/forbidden.py", "type": "blob", "mode": "100644", "sha": "b" * 40}]}
+        api = sync.GitHubAPI(token="offline-not-real", adapter=adapter)
+        doc = api.tree(self.env["GITHUB_SHA"])
+        self.assertEqual(adapter.urls, [sync.API + adapter.commit_path, sync.API + recursive_path])
+        with self.assertRaises(sync.SyncError):
+            sync.tree_files(doc)
+        doc["tree"] = []
+        doc["truncated"] = True
+        with self.assertRaises(sync.SyncError):
+            sync.tree_files(doc)
 
     def test_actual_api_identity(self):
         good = {"id": int(sync.REPO_ID), "full_name": sync.REPO, "owner": {"id": int(sync.OWNER_ID)}}
@@ -399,9 +540,10 @@ class OfflineTests(unittest.TestCase):
             sync.prepare(self.out, self.out, api=api, env=self.env)
         self.assertFalse((self.out / "prepared.json").exists())
         api = FakeAPI(self.seed, existing=True)
-        original_tree = api.tree
-        api.tree = lambda commit: {"truncated": False, "tree": []} if commit == "a" * 40 else original_tree(commit)
-        with self.assertRaisesRegex(sync.SyncError, "baseline missing/invalid"):
+        def missing_baseline(source_sha):
+            raise sync.SyncError("main baseline path segment missing/duplicate")
+        api.main_baseline = missing_baseline
+        with self.assertRaisesRegex(sync.SyncError, "baseline path segment missing/duplicate"):
             sync.prepare(self.out, self.out, api=api, env=self.env)
 
     def test_baseline_revalidated_before_collect_and_publish(self):

@@ -207,7 +207,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):policy.verify(self.root)
     def test_knowledge_scope_is_separate_and_no_production_recovery(self):
         result = policy.verify(ROOT)
-        self.assertEqual(result['knowledge_stage'], 'owned-real-knowledge-data-only-v1')
+        self.assertEqual(result['knowledge_stage'], 'owned-real-knowledge-data-only-v2')
         self.assertFalse(result['production_recovered'])
         self.assertEqual(result['archived_workflows'], 30)
         doc = yaml.safe_load((ROOT / policy.KNOWLEDGE_WORKFLOW).read_text())

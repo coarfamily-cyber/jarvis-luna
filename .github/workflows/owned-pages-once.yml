@@ -63,7 +63,7 @@ jobs:
           from check_owned_workflow_policy import verify
           policy = verify(Path('.'))
           assert policy['active_schedules'] == 2
-          assert policy['knowledge_stage'] == 'owned-real-knowledge-data-only-v1'
+          assert policy['knowledge_stage'] == 'owned-real-knowledge-data-only-v2'
           assert policy['production_recovered'] is False
           assert len(list(Path('.github/workflows-quarantined/20261023').glob('*.yml'))) == 30
           # Preserve the legacy commerce safety assertions against the INACTIVE copy.
