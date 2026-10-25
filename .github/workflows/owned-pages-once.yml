@@ -57,12 +57,13 @@ jobs:
           import hashlib, json
           from pathlib import Path
           active = sorted(p.name for p in Path('.github/workflows').rglob('*') if p.is_file() and p.suffix in {'.yml', '.yaml'})
-          assert active == ['owned-core-ledger-publisher.yml', 'owned-core-local.yml', 'owned-fx-readonly-observation.yml', 'owned-pages-once.yml', 'owned-repo-smoke.yml', 'owned-shopify-readonly-preflight.yml', 'owned-shopify-team-observation.yml', 'owned-shopify-us-free-shipping.yml', 'owned-technical-review-report.yml'], active
+          assert active == ['owned-core-ledger-publisher.yml', 'owned-core-local.yml', 'owned-fx-readonly-observation.yml', 'owned-pages-once.yml', 'owned-real-knowledge-sync.yml', 'owned-repo-smoke.yml', 'owned-shopify-readonly-preflight.yml', 'owned-shopify-team-observation.yml', 'owned-shopify-us-free-shipping.yml', 'owned-technical-review-report.yml'], active
           import sys
           sys.path.insert(0, 'scripts')
           from check_owned_workflow_policy import verify
           policy = verify(Path('.'))
-          assert policy['active_schedules'] == 1
+          assert policy['active_schedules'] == 2
+          assert policy['knowledge_stage'] == 'owned-real-knowledge-data-only-v1'
           assert policy['production_recovered'] is False
           assert len(list(Path('.github/workflows-quarantined/20261023').glob('*.yml'))) == 30
           # Preserve the legacy commerce safety assertions against the INACTIVE copy.

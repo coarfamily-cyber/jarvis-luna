@@ -59,9 +59,9 @@ class FreshnessReportingTests(unittest.TestCase):
                     if p.startswith('.github/workflows/') and p.endswith(('.yml', '.yaml'))}
         active = {p.name for p in (ROOT/'.github/workflows').glob('*.yml')}
         self.assertEqual(active, expected)
-        self.assertEqual(report['active_workflows'], 9)
-        self.assertEqual(report['scheduled_workflows'], 1)
-        self.assertEqual(report['unmonitored_scheduled_workflows'], ['owned-core-local.yml'])
+        self.assertEqual(report['active_workflows'], 10)
+        self.assertEqual(report['scheduled_workflows'], 2)
+        self.assertEqual(report['unmonitored_scheduled_workflows'], ['owned-core-local.yml', 'owned-real-knowledge-sync.yml'])
         self.assertEqual(len(report['excluded_disabled_workflows']), 12)
         self.assertFalse(report['coverage_complete'])
         self.assertEqual(report['failed_actions'], 'unknown')

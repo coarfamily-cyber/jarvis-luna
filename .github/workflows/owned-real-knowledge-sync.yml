@@ -1,0 +1,82 @@
+name: Owned real knowledge sync
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed main commit
+        required: true
+        type: string
+  schedule:
+    - cron: '37 0,6,12,18 * * *'
+permissions: {}
+concurrency:
+  group: owned-real-knowledge-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'coarfamily-cyber/jarvis-luna' && github.repository_id == '1431541717' && github.repository_owner_id == '280980688' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && (github.event_name == 'schedule' || inputs.expected_sha == github.sha)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      TYPESAFE_ENABLED: '0'
+      GEMINI_ENABLED: '0'
+      GEMINI_FALLBACK_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/
+            /scripts/
+            /requirements/requirements-verification.txt
+            /real_knowledge_sync.py
+            /data/knowledge/training_corpus.jsonl
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Install only hash-pinned policy validation dependency
+        run: |
+          grep '^pyyaml==' requirements/requirements-verification.txt > "$RUNNER_TEMP/knowledge-verification.txt"
+          test "$(wc -l < "$RUNNER_TEMP/knowledge-verification.txt")" -eq 1
+          python -m pip --isolated install --disable-pip-version-check --require-hashes --only-binary=:all: -r "$RUNNER_TEMP/knowledge-verification.txt"
+      - name: Verify reviewed knowledge-only helper
+        run: |
+          printf '%s  %s\n' '4a395b8a87dbd81909f766c77bed73fa88e06812b75c455133da0dde8eda057c' 'scripts/owned_real_knowledge_sync.py' | sha256sum --check --status
+      - name: Offline knowledge and workflow boundary tests
+        run: |
+          python -I -B - <<'PY'
+          import socket, sys, unittest
+          from pathlib import Path
+          def deny(*args, **kwargs):
+              raise RuntimeError('Network prohibited during knowledge boundary tests')
+          socket.create_connection = deny
+          socket.socket.connect = deny
+          socket.socket.connect_ex = deny
+          sys.path.insert(0, str(Path('scripts').resolve()))
+          suite = unittest.TestSuite()
+          for name in ('test_owned_real_knowledge_sync', 'test_owned_workflow_policy', 'test_owned_workflow_policy_independent'):
+              suite.addTests(unittest.defaultTestLoader.loadTestsFromName(name))
+          if not unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful():
+              raise SystemExit(1)
+          PY
+      - name: Prepare fixed knowledge-state baseline
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -I -B scripts/owned_real_knowledge_sync.py prepare --root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/owned-real-knowledge-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Collect credential-free public knowledge
+        env:
+          GITHUB_TOKEN: ''
+        run: timeout --signal=TERM --kill-after=5s 180s python -I -B scripts/owned_real_knowledge_sync.py collect --root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/owned-real-knowledge-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Publish only fixed data branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -I -B scripts/owned_real_knowledge_sync.py publish --root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/owned-real-knowledge-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Propagate partial collection failure
+        run: python -I -B scripts/owned_real_knowledge_sync.py assert-complete --out "$RUNNER_TEMP/owned-real-knowledge-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"

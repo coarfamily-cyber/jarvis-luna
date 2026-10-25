@@ -1,5 +1,6 @@
 """Actual-checkout quarantine assertions, separate from legacy fixture tests."""
 import ast
+import hashlib
 import yaml
 import shutil
 import tempfile
@@ -20,7 +21,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             shutil.copy2(ROOT/relative,dest)
     def test_actual_checkout(self):
         result=policy.verify(ROOT)
-        self.assertEqual(result['active_schedules'], 0 if policy.STAGE == policy.MANUAL_STAGE else 1)
+        self.assertEqual(result['active_schedules'], 1 if policy.STAGE == policy.MANUAL_STAGE else 2)
         self.assertEqual(len(result['active_manual_workflows']), 8 if policy.STAGE == policy.MANUAL_STAGE else 7)
         self.assertEqual(result['archived_workflows'],30)
         self.assertFalse(result['production_recovered'])
@@ -32,6 +33,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
             '.github/workflows/owned-core-local.yml',
             '.github/workflows/owned-fx-readonly-observation.yml',
             '.github/workflows/owned-pages-once.yml',
+            '.github/workflows/owned-real-knowledge-sync.yml',
             '.github/workflows/owned-repo-smoke.yml',
             '.github/workflows/owned-shopify-readonly-preflight.yml',
             '.github/workflows/owned-shopify-team-observation.yml',
@@ -54,7 +56,7 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
 
     def test_existing_shipping_mutations_rejected(self):
         path = self.root / '.github/workflows/owned-shopify-us-free-shipping.yml'
-        original = path.read_text()
+        original = path.read_text(encoding='utf-8')
         for old, new in [('default: check', 'default: apply'),
                          ('contents: read', 'contents: write'),
                          ('inputs.expected_sha == github.sha', 'true'),
@@ -62,10 +64,10 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
                          ("inputs.mode == 'apply' && '1' || '0'", "'1'"),
                          ('timeout-minutes: 5', 'timeout-minutes: 60')]:
             with self.subTest(mutation=old):
-                path.write_text(original.replace(old, new))
+                path.write_text(original.replace(old, new), encoding='utf-8', newline='\n')
                 with self.assertRaises(ValueError):
                     policy.verify(self.root)
-        path.write_text(original)
+        path.write_text(original, encoding='utf-8', newline='\n')
 
     def test_pages_exact_inventory_matches_policy(self):
         # Keep Pages literal allowlist and exact fingerprint policy synchronized.
@@ -203,20 +205,62 @@ class OwnedWorkflowPolicyTests(unittest.TestCase):
         path=self.root/'.github/workflows/owned-core-local.yml'
         path.write_text(path.read_text().replace("  schedule:\n    - cron: '17 */1 * * *'\n", '').replace('  workflow_dispatch:', "  workflow_dispatch:\n  schedule:\n    - cron: '* * * * *'"))
         with self.assertRaises(ValueError):policy.verify(self.root)
+    def test_knowledge_scope_is_separate_and_no_production_recovery(self):
+        result = policy.verify(ROOT)
+        self.assertEqual(result['knowledge_stage'], 'owned-real-knowledge-data-only-v1')
+        self.assertFalse(result['production_recovered'])
+        self.assertEqual(result['archived_workflows'], 30)
+        doc = yaml.safe_load((ROOT / policy.KNOWLEDGE_WORKFLOW).read_text())
+        helper = (ROOT / 'scripts/owned_real_knowledge_sync.py').read_bytes().replace(b'\r\n', b'\n')
+        checksum_step = next(s for s in doc['jobs']['sync']['steps'] if s.get('name') == 'Verify reviewed knowledge-only helper')
+        self.assertIn(hashlib.sha256(helper).hexdigest(), checksum_step['run'])
+        self.assertNotIn('actions/upload-artifact', str(doc))
+        self.assertNotIn('secrets.', str(doc))
+
+    def test_knowledge_lane_mutations_rejected_even_with_changed_fingerprint(self):
+        path = self.root / policy.KNOWLEDGE_WORKFLOW
+        original = path.read_bytes()
+        mutations = [
+            (b'37 0,6,12,18 * * *', b'* * * * *'),
+            (b"github.ref == 'refs/heads/main'", b'true'),
+            (b'inputs.expected_sha == github.sha', b'true'),
+            (b'contents: write', b'contents: read'),
+            (b'cancel-in-progress: false', b'cancel-in-progress: true'),
+            (b'owned_real_knowledge_sync.py publish', b'publish_transaction.py publish'),
+            (b'github.token', b'secrets.PUBLISH_TOKEN'),
+            (b'timeout-minutes: 15', b'timeout-minutes: 60')]
+        try:
+            for old, new in mutations:
+                with self.subTest(mutation=old):
+                    changed = original.replace(old, new)
+                    self.assertNotEqual(changed, original)
+                    path.write_bytes(changed)
+                    with patch.dict(policy.EXPECTED, {policy.KNOWLEDGE_WORKFLOW: {
+                            'blob': hashlib.sha1(b'blob '+str(len(changed)).encode()+b'\0'+changed).hexdigest(), 'mode': '100644'}}):
+                        with self.assertRaises(ValueError):
+                            policy.verify(self.root)
+        finally:
+            path.write_bytes(original)
+
+    def test_unknown_knowledge_stage_rejected(self):
+        with patch.object(policy, 'KNOWLEDGE_STAGE', 'unreviewed'):
+            with self.assertRaises(ValueError):
+                policy.verify(self.root)
+
     def producer_profile(self, hourly):
         path=self.root/'.github/workflows/owned-core-local.yml'
-        text=path.read_text().replace("  schedule:\n    - cron: '17 */1 * * *'\n", '')
+        text=path.read_text(encoding='utf-8').replace("  schedule:\n    - cron: '17 */1 * * *'\n", '')
         if hourly:
             text=text.replace('  workflow_dispatch:\n', "  workflow_dispatch:\n  schedule:\n    - cron: '17 */1 * * *'\n")
-        path.write_text(text)
+        path.write_text(text, encoding='utf-8', newline='\n')
     def test_named_manual_profile(self):
         self.producer_profile(False)
         with patch.object(policy, 'STAGE', policy.MANUAL_STAGE):
-            self.assertEqual(policy.verify(self.root)['active_schedules'],0)
+            self.assertEqual(policy.verify(self.root)['active_schedules'],1)
     def test_named_hourly_profile(self):
         self.producer_profile(True)
         with patch.object(policy, 'STAGE', policy.HOURLY_STAGE):
-            self.assertEqual(policy.verify(self.root)['active_schedules'],1)
+            self.assertEqual(policy.verify(self.root)['active_schedules'],2)
     def test_manual_stage_rejects_hourly_bytes(self):
         self.producer_profile(True)
         with patch.object(policy, 'STAGE', policy.MANUAL_STAGE):
