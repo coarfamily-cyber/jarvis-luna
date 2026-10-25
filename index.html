@@ -578,6 +578,15 @@ nav a{font-size:12px;}
     </ul>
   </div>
 
+  <!-- 국내 판매처 랭킹 (올리브영·아모레몰·클럽클리오·마녀공장·화해) -->
+  <div class="dashboard-card" id="krseller-card">
+    <h4><span class="dashboard-card-icon">🇰🇷</span>국내 판매처 랭킹</h4>
+    <div class="ch-note-sub" id="krseller-meta" style="font-size:11.5px;color:#8b949e;margin:-4px 0 6px;">불러오는 중…</div>
+    <ul class="mkt-list" id="krseller-list">
+      <li style="color:#666;font-size:13px;padding:10px 0;">로딩중...</li>
+    </ul>
+  </div>
+
   <!-- TikTok -->
   <div class="dashboard-card">
     <h4><span class="dashboard-card-icon">🎵</span>TikTok Shop US</h4>
@@ -2370,6 +2379,45 @@ setInterval(renderDailyPipeline,300000);
     var price=it.price_usd!=null?('$'+Number(it.price_usd).toFixed(2)):(it.price_text||'');
     var right=el('span',null,price+(it.rating?' · ★'+it.rating+(it.reviews?' ('+it.reviews+')':''):'')); right.style.cssText='white-space:nowrap;color:#8b949e;font-size:12px;';
     a.appendChild(left); a.appendChild(right); li.appendChild(a); ul.appendChild(li);
+  });
+})();
+</script>
+
+<script>
+/* 국내 판매처 랭킹 수집 채널.
+   데이터는 main 의 data/ 가 아니라 데이터 전용 브랜치 kr-beauty-sellers-data 의 latest.json 이다.
+   main 의 data/ 는 owned-core-local 이 바이트 단위로 고정하고, Pages 는 공개 파일 36개를 고정한다.
+   그래서 파일을 늘리지 않고 브라우저가 공개 raw 주소에서 직접 읽는다 (2026-10-25).
+   수집기: scripts/collect_kr_beauty_sellers.py. 차단·실패한 판매처는 0건과 사유를 그대로 보여준다. */
+(async function(){
+  var ul=document.getElementById('krseller-list'), meta=document.getElementById('krseller-meta');
+  if(!ul||!meta) return;
+  var SRC='https://raw.githubusercontent.com/coarfamily-cyber/jarvis-luna/kr-beauty-sellers-data/latest.json';
+  function el(tag,cls,txt){var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e;}
+  var d=null, err='';
+  try{ d=await getJSON(SRC); }catch(e){ err=e&&e.message?e.message:String(e); }
+  ul.textContent='';
+  if(!d||!d.sources){
+    var li=el('li','ch-empty'); li.appendChild(el('span','ch-badge','데이터 없음')); if(err) li.appendChild(el('div','ch-reason',err)); ul.appendChild(li);
+    meta.textContent='수집 데이터를 읽지 못했어요'; return;
+  }
+  var ok=d.sources.filter(function(s){return s.status==='ok';}).length;
+  meta.textContent='수집 '+String(d.collected_at||'').slice(0,16).replace('T',' ')+' UTC · 판매처 '+ok+'/'+d.sources.length+' · 상품 '+(d.total_items||0)+'개';
+  var BADGE={blocked:'차단(우회 안 함)',failed:'수집 실패',empty:'0건'};
+  d.sources.forEach(function(s){
+    var head=el('li'); head.style.cssText='padding:8px 0 2px;font-weight:600;font-size:12.5px;display:flex;justify-content:space-between;gap:8px;';
+    var a=el('a',null,s.name); a.href=s.source_url||'#'; a.target='_blank'; a.rel='noopener noreferrer'; a.style.cssText='color:inherit;text-decoration:none;';
+    head.appendChild(a); head.appendChild(el('span',null,s.status==='ok'?(s.count+'건'):(BADGE[s.status]||s.status)));
+    ul.appendChild(head);
+    if(s.status!=='ok'){ if(s.reason){ var r=el('li','ch-reason',s.reason); r.style.cssText='font-size:11.5px;color:#8b949e;padding:0 0 4px;'; ul.appendChild(r);} return; }
+    (s.items||[]).slice(0,3).forEach(function(it){
+      var li=document.createElement('li'); var x=document.createElement('a'); x.href=it.url||s.source_url||'#'; x.target='_blank'; x.rel='noopener noreferrer';
+      x.style.cssText='color:inherit;text-decoration:none;display:flex;justify-content:space-between;gap:10px;font-size:12.5px;';
+      var left=el('span',null,it.rank+'. '+(it.brand?it.brand+' · ':'')+it.name); left.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      var right=el('span',null,(it.price_krw!=null?'₩'+Number(it.price_krw).toLocaleString('ko-KR'):'')+(it.rating!=null?' · ★'+it.rating+(it.reviews!=null?' ('+Number(it.reviews).toLocaleString('ko-KR')+')':''):''));
+      right.style.cssText='white-space:nowrap;color:#8b949e;font-size:12px;';
+      x.appendChild(left); x.appendChild(right); li.appendChild(x); ul.appendChild(li);
+    });
   });
 })();
 </script>
