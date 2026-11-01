@@ -1001,6 +1001,55 @@
         "knowledge": "각 팀은 무료 범위에서 역량에 맞는 합법적인 수익화 기회를 자율적으로 조사하고, 무료 이용 가능성·실제 비용·배송·마진·무료 혜택 조건·예상 수익 근거·위험을 검증해 실행계획을 제안한다. 조사·제안만의 목표이며 수익을 보장하지 않는다. 실제 도입·구매·가입·유료 전환·유료 집행·외부 마케팅 자동 발송·계좌 설정·금융거래·상품 활성화는 승인되지 않았다.",
         "graph": "각 팀은 무료 범위에서 역량에 맞는 합법적인 수익화 기회를 자율적으로 조사하고, 무료 이용 가능성·실제 비용·배송·마진·무료 혜택 조건·예상 수익 근거·위험을 검증해 실행계획을 제안한다. 조사·제안만의 목표이며 수익을 보장하지 않는다. 실제 도입·구매·가입·유료 전환·유료 집행·외부 마케팅 자동 발송·계좌 설정·금융거래·상품 활성화는 승인되지 않았다."
       }
+    },
+    {
+      "id": "2026-11-01-herdr-offline-preparation",
+      "date": "2026-11-01",
+      "title": "Herdr 팀 검토: 명시적 상태 보고·오프라인 준비·권한 경계",
+      "source": "video_description_verified_official_docs_cross_checked",
+      "source_url": "https://www.youtube.com/watch?v=zpf84UcXcXo",
+      "source_urls": [
+        "https://www.youtube.com/watch?v=zpf84UcXcXo",
+        "https://herdr.dev/",
+        "https://herdr.dev/core/",
+        "https://github.com/herdrdev/herdr-core/blob/master/schema/README.md",
+        "https://github.com/herdrdev/herdr-core/blob/master/schema/hc.openrpc.json",
+        "https://github.com/herdrdev/herdr-core/blob/master/docs/security.md"
+      ],
+      "verification_status": "video_description_verified_not_full_video_or_transcript_reviewed",
+      "source_note": "민둥이 | 쉽게 배우는 AI, 198초, “AI 코딩하시면 써보세요. 허더가 무료 앱으로 나왔습니다 [3분 완벽 정리]”. 제목·설명·챕터만 확인했고 전체 자막 조회는 빈 결과여서 전체 영상/자막 검토로 기록하지 않는다. 설명의 00:28 위임·보고, 01:06 UI, 01:46 백그라운드 Core, 02:36 설정을 공식 문서와 대조했다. herdrdev의 Herdr이며 herder.sh 계정 전환 제품이 아니다.",
+      "review_path": "docs/learning/2026-11-01-herdr-preparation.md",
+      "teams": [
+        "knowledge",
+        "institutions",
+        "design",
+        "legal"
+      ],
+      "summary": "Herdr 앱·Core·TUI는 Apache-2.0이며 AI 제공자 이용료는 별도일 수 있다. 상태는 프로그램이 OSC 7501로 명시 보고하며 누락·미확인 상태는 unknown으로 둔다. done은 테스트 통과·배포·사업 승인·Core 복구 증거가 아니다. 앱을 닫아도 살아 있는 Core의 터미널은 계속될 수 있지만 재부팅 후 원래 작업 자동 재개를 보장하지 않는다. Core API 클라이언트는 OS 계정의 명령·파일 권한을 가지므로 raw API 노출이나 접근 생성은 금지한다. 이번 적용은 검토 자료와 비활성 순수 오프라인 스냅샷 정규화 준비뿐이다. 현재 Core는 saved_input_business_review_only, full_core_recovery=false이며 실제 AI 에이전트 활성화가 아니다.",
+      "current_core_mode": "saved_input_business_review_only",
+      "full_core_recovery": false,
+      "status": "generated_for_review_not_acknowledged",
+      "execution_verified": false,
+      "business_approval": false,
+      "scope_limits": {
+        "installation": false,
+        "agent_execution": false,
+        "paid_services": false,
+        "credential_creation_or_configuration": false,
+        "ssh_connection": false,
+        "core_connection": false,
+        "raw_api_exposure": false,
+        "shopify_changes": false,
+        "workflow_changes": false,
+        "manual_workflow_reruns": false,
+        "explicit_deployment": false
+      },
+      "team_actions": {
+        "knowledge": "영상 설명과 공식 문서의 검증 범위를 구분하고 상태 보고·종료·외부 검증을 별도 기록하는 기준을 검토한다. 공유 피드 생성은 읽음·실행 확인이 아니다.",
+        "institutions": "스냅샷 캡처 시각·source epoch·재연결 후 새 스냅샷 조건과 lost/finished 구분을 오프라인 예제로 검토한다. 설치·Core 연결·SSH·자격증명 구성은 하지 않는다.",
+        "design": "보고 상태와 종료/검증 상태를 구분하고 unknown과 done의 의미를 혼동하지 않는 UI 표시안을 검토한다. 터미널 본문·명령·경로·호스트·비밀은 표시하지 않는다.",
+        "legal": "Apache-2.0 조건과 AI 제공자 별도 비용 가능성, OS 계정 수준 API 권한을 검토한다. 유료 가입·접근 생성·Shopify 변경·배포를 승인한 자료로 해석하지 않는다."
+      }
     }
   ]
 }
