@@ -98,13 +98,14 @@ def build_summary(pull_requests, reviews_by_pr, comments_by_pr, events_by_pr, *,
         recommendations.append("현재 집계만으로는 지침 변경 근거가 부족합니다. 변경 없이 추세를 관찰하세요.")
     return {"schema_version":1,"generated_at":now.isoformat(),"window_days":WINDOW_DAYS,
         "source":"GitHub REST API aggregate metadata only",
-        "privacy":"No issue/review comment bodies, diffs, secrets, customer data, or Shopify data are collected.",
+        "privacy":"Comment text is ignored and never stored or printed; only aggregate reaction counts are retained. No diffs, secrets, customer data, or Shopify data are retained.",
         "authority":{"mode":"read_only_proposal","prompt_changes_allowed":False,"workflow_changes_allowed":False,
             "merge_allowed":False,"shopify_write_allowed":False,"human_approval_required":True,"independent_tests_required":True},
         "totals":totals,"pull_requests":rows,"recommendations":recommendations,
         "limitations":["A merge is an outcome signal, not proof that every review comment was correct.",
             "Thumbs-up/down reactions are sparse and may be biased by who reacts.",
             "Label events are counted, not interpreted as quality labels.",
+            "The report samples at most 30 recent PRs and the first 100 events/comments/reviews per PR.",
             "This report does not infer business performance or autonomously rewrite agent prompts."]}
 
 def main():
