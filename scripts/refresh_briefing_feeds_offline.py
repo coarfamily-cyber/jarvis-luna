@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from build_team_feeds import briefing_rows, team_feed_row
+from team_briefing_overlay import load_team_briefings, REVIEW_FEEDS
 
 
 def refresh(feed, briefings):
@@ -40,9 +41,10 @@ def refresh(feed, briefings):
 
 def main():
     root = Path(__file__).resolve().parent.parent
-    target = root / 'data/team_feeds.json'
-    result = refresh(json.loads(target.read_text(encoding='utf-8')),
-                     json.loads((root / 'data/manual/team_briefings.json').read_text(encoding='utf-8')))
+    target = root / REVIEW_FEEDS
+    result = refresh(json.loads((root / 'data/team_feeds.json').read_text(encoding='utf-8')),
+                     load_team_briefings(root))
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 

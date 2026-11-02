@@ -24,10 +24,11 @@ from pathlib import Path
 
 from build_team_learning import brief, reviewed_datetime
 from document_handoffs import feed_rows
+from team_briefing_overlay import load_team_briefings
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
-OUT = DATA / "team_feeds.json"
+OUT = ROOT / "review" / "candidates" / "team_feeds.json"
 UA = "Mozilla/5.0 (compatible; JARVIS-LUNA/1.0; +https://github.com/coar0000-wq/jarvis-luna)"
 TIMEOUT, RECENT_DAYS = 25, 14
 
@@ -425,8 +426,8 @@ def main() -> int:
                       "text": (note + " " + description).strip()[:800]})
 
     # 사용자가 직접 전달한 전략 요약. 영상 URL이 없어도 팀별로 보존·배포한다.
-    # 자동 생성 파일에 직접 쓰면 다음 실행에서 사라지므로 data/manual이 정본이다.
-    briefings = load(DATA / "manual" / "team_briefings.json")
+    # 수입 data/manual은 고정 보존하고 승인 추가분은 review/manual에서 합성한다.
+    briefings = load_team_briefings(DATA.parent)
     pools.extend(briefing_rows(briefings))
 
     # 자막을 검토해 채택한 YouTube 학습 항목 (2026-09-28).
@@ -529,6 +530,7 @@ def main() -> int:
         "not_collected": NOT_COLLECTED,
         "teams": teams,
     }
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"\n전체 풀 {len(pools)}건 · 미배정 {unrouted}건"
           + (f" · 제목 없어 버림 {dropped}건" if dropped else ""))

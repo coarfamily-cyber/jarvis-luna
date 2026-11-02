@@ -107,6 +107,7 @@ class BriefingFeedTests(unittest.TestCase):
         def load(path):
             return {"items": items} if str(path).endswith("manual/team_briefings.json") else {}
         with patch.object(feeds, "load", side_effect=load), \
+             patch.object(feeds, "load_team_briefings", return_value={"items": items}), \
              patch.object(feeds, "feed_rows", return_value=[]), \
              patch.object(feeds, "collect_fda", return_value=([], [])), \
              patch.object(feeds, "OUT", output), contextlib.redirect_stdout(io.StringIO()):

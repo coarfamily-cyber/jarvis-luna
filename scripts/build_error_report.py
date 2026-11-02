@@ -128,7 +128,8 @@ def main() -> int:
 
     # 팀 피드. not_collected 는 "예전에 이 주소가 없더라" 는 기록이지
     # 지금 고장났다는 뜻이 아니다. 실제 실패는 fda_failures 에 담긴다.
-    tf = load(DATA / "team_feeds.json") or {}
+    from team_briefing_overlay import load_team_feeds
+    tf = load_team_feeds(DATA.parent)
     live = (tf.get("summary") or {}).get("legal") or {}
     fda_ok = not (tf.get("fda_failures") or [])
     for name, why in (tf.get("not_collected") or {}).items():

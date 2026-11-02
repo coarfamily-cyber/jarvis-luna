@@ -98,7 +98,8 @@ def labeled_items() -> list[dict]:
     for r in ((load(DATA / "design_team.json", {}).get("references") or {}).get("items") or []):
         add(r.get("url"), f"{r.get('title', '')} {r.get('summary', '')}", ["design"], "design_refs")
 
-    for r in (load(DATA / "team_feeds.json", {}).get("teams") or {}).get("legal", []):
+    from team_briefing_overlay import load_team_feeds
+    for r in (load_team_feeds(DATA.parent).get("teams") or {}).get("legal", []):
         if r.get("pool") == "fda":
             add(r.get("url") or r.get("title"), f"{r.get('title', '')} {r.get('summary', '')}", ["legal"], "fda")
 

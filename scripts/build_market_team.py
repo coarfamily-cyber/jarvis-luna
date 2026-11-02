@@ -268,7 +268,8 @@ def build_marketing_playbook() -> dict:
             "자료": [{"title": h["title"], "url": h.get("url"),
                      "note": h.get("note", "")} for h in hits[:5]],
         }
-    briefings = load(D / "manual" / "team_briefings.json", {}) or {}
+    from team_briefing_overlay import load_team_briefings
+    briefings = load_team_briefings(D.parent)
     applied = [{"title": b.get("title"), "date": b.get("date"),
                 "market": (b.get("team_actions") or {}).get("market", "")}
                for b in (briefings.get("items") or [])

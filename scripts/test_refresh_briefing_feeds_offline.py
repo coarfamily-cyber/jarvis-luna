@@ -1,10 +1,10 @@
 """Offline refresh retention, provenance and repository assignment checks."""
 from copy import deepcopy
-import json
 from pathlib import Path
 import unittest
 
 from refresh_briefing_feeds_offline import refresh
+from team_briefing_overlay import load_team_briefings, load_team_feeds
 
 
 class ScopedBriefingRefreshTests(unittest.TestCase):
@@ -35,8 +35,8 @@ class ScopedBriefingRefreshTests(unittest.TestCase):
 
     def test_repository_assignments_and_idempotence(self):
         root = Path(__file__).resolve().parent.parent
-        feed = json.loads((root / 'data/team_feeds.json').read_text())
-        briefings = json.loads((root / 'data/manual/team_briefings.json').read_text())
+        feed = load_team_feeds(root)
+        briefings = load_team_briefings(root)
         self.assertEqual(refresh(feed, briefings), feed)
         for source in briefings['items']:
             for team in source['teams']:

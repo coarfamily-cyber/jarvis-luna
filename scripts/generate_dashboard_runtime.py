@@ -673,7 +673,8 @@ def team_cards(graph: dict, gcs: dict | None = None) -> list[dict]:
     D = ROOT / "data"
 
     # 팀마다 최근에 들어온 자료 건수. 요약 뒤에 덧붙인다.
-    feeds = (load_json(D / "team_feeds.json", None) or {}).get("summary") or {}
+    from team_briefing_overlay import load_team_feeds
+    feeds = load_team_feeds(ROOT).get("summary") or {}
 
     def feed_tail(team_id: str) -> str:
         # '새 자료' 는 읽을거리 수다. 크롤러가 긁어온 상품 행은 뺀다.
