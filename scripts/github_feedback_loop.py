@@ -56,7 +56,7 @@ def build_summary(pull_requests, reviews_by_pr, comments_by_pr, events_by_pr, *,
         number = pr.get("number"); updated = parse_time(pr.get("updated_at"))
         if not isinstance(number,int) or updated is None or updated < cutoff: continue
         totals["pull_requests_reviewed"] += 1
-        merged = pr.get("merged") is True
+        merged = pr.get("merged") is True or pr.get("merged_at") is not None
         if merged: totals["merged"] += 1
         elif pr.get("state") == "closed": totals["closed_unmerged"] += 1
         states = {"APPROVED":0,"CHANGES_REQUESTED":0,"COMMENTED":0}
