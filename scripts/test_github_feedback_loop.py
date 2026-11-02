@@ -5,8 +5,8 @@ from github_feedback_loop import build_summary
 class FeedbackLoopTests(unittest.TestCase):
     def setUp(self):
         self.now=datetime(2026,11,2,tzinfo=timezone.utc)
-        self.prs=[{"number":1,"updated_at":"2026-11-01T00:00:00Z","merged":True,"state":"closed"},
-                  {"number":2,"updated_at":"2026-10-31T00:00:00Z","merged":False,"state":"closed"}]
+        self.prs=[{"number":1,"updated_at":"2026-11-01T00:00:00Z","merged_at":"2026-11-01T01:00:00Z","state":"closed"},
+                  {"number":2,"updated_at":"2026-10-31T00:00:00Z","merged_at":None,"state":"closed"}]
         self.reviews={1:[{"submitted_at":"2026-11-01T00:00:00Z","state":"APPROVED"}],
                       2:[{"submitted_at":"2026-11-01T00:00:00Z","state":"CHANGES_REQUESTED"}]}
         self.comments={1:[{"created_at":"2026-11-01T00:00:00Z","reactions":{"+1":2,"-1":0}}],
