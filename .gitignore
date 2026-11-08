@@ -19,6 +19,8 @@ deploy_stdout.txt
 *.bat
 !JARVIS_CRAFT_ANYTHING.bat
 !scripts/setup_craft_anything.bat
+!JARVIS_TRENDING_AI_SUITE.bat
+!scripts/setup_trending_tools.bat
 COMMIT_MSG.txt
 push*.txt
 push*.log

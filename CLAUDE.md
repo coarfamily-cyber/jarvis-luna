@@ -219,6 +219,25 @@ editor-content 자체가 원본에 없다. 스크립트가 그린다.
   - 스킬: `/craft-anything <URL>`
   - 바이너리 셋업: `scripts/setup_craft_anything.py` (선택 사항, 미설치 시 내장 클린룸 엔진 가동)
 
+## 9대 깃허브 트렌딩 AI 툴킷 — Trending AI Suite (2026-11-08)
+
+전 팀은 데이터 수집, 백그라운드 PC 자동화, 멀티에이전트 작업, 로컬 모델 추론 및 시계열 예측 시 9대 깃허브 트렌딩 도구군을 적극 활용한다 (`TRENDING_AI_SUITE_GUIDE.md` 참조).
+1. **Agent Desktop** (`automation/agent_desktop.py`): 마우스/키보드 점유 없는 백그라운드 메모장/브라우저/엑셀 자동화.
+2. **Scrapling** (`automation/scrapling_crawler.py`): 클라우드플레어 우회 & 사이트 구조 변경 적응형 상품 데이터 수집.
+3. **Hyprland** (`config/hyprland-jarvis.conf`): 리눅스 관제실 타일링 모니터링 데스크톱 환경 프리셋.
+4. **FreeToken** (`automation/local_ai_engines.py`): 8GB 게이밍 노트북 로컬 GPU 가속 및 초저지연 토큰 생성.
+5. **Kronos** (`automation/kronos_forecaster.py`): 차트 시계열 기반 이커머스 상품 가격 및 수요 추세 7일~30일 예측.
+6. **Colibri** (`automation/local_ai_engines.py`): SSD 레이어 오프로드로 일반 저사양 PC에서 70B 초대형 모델 실행.
+7. **WorkTrunk** (`automation/worktrunk_manager.py`): 멀티 AI 코딩 인스턴스 동시 작업 시 Git Worktree 분기 격리 및 안전 병합.
+8. **NanoChat** (`automation/local_ai_engines.py`): 안드레이 카파시 초경량 커스텀 소형 LLM 학습 및 로컬 서빙.
+9. **Heretic** (`automation/heretic_filter.py`): 상투어와 거절 제거, 팩트 중심 비서실장 직설형 프롬프트 보정.
+- **실행**:
+  - 윈도우 원클릭: `JARVIS_TRENDING_AI_SUITE.bat`
+  - 마스터 파이프라인: `python automation/trending_ai_orchestrator.py pipeline --url <URL>`
+  - 웹 스튜디오: `index.html#trending-suite`
+  - 스킬: `/trending-tools`
+
+
 
 ### Issue tracker
 
