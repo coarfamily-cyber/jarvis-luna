@@ -205,8 +205,20 @@ editor-content 자체가 원본에 없다. 스크립트가 그린다.
 ## Agent skills
 
 `.claude/skills/` 에 Matt Pocock skills v1.3.1 을 원본 그대로 넣었다 (2026-10-25, MIT, upstream `mattpocock/skills@5beb35b`).
-사용자 호출: `/grill-me` 계획 다듬기 · `/wait-what` 다시 설명 · `/implement-spec` 스펙 구현 · `/to-spec` · `/to-tickets` · `/retro` 회고.
+사용자 호출: `/grill-me` 계획 다듬기 · `/wait-what` 다시 설명 · `/implement-spec` 스펙 구현 · `/to-spec` · `/to-tickets` · `/retro` 회고 · `/craft-anything` 웹·상세페이지 클린룸 고속 복제.
 `/retro` 는 위 「재귀적 자기개선 루프」의 ①②를 돕는다. 찾은 것은 사람에게 보고하고, 고치는 것은 루프대로 한다.
+
+## 상세페이지 및 웹 클린룸 복제 — Craft Anything (2026-11-08)
+
+디자인 및 리스팅 제작 팀은 타겟 사이트·경쟁사 상세페이지를 복제할 때 `automation/craft_anything.py` 또는 `/craft-anything` 스킬을 사용한다.
+- **원칙**: 원본 내부의 비공개 자산을 훔치지 않고, 방문자 시점에서 레이아웃·색상·타이포·반응형 그리드를 실측해 새 코드로 재구현(Clean-room).
+- **검증**: 1440px(데스크톱), 768px(태블릿), 390px(모바일) 3단 화면 폭에서 원본과 비교하여 유사도(Likeness) 90% 이상을 달성할 때까지 루프 반복.
+- **실행**:
+  - 윈도우 원클릭: `JARVIS_CRAFT_ANYTHING.bat`
+  - CLI: `python automation/craft_anything.py rebuild <URL> --prompt "쇼피파이 상세페이지 반응형 복제"`
+  - 스킬: `/craft-anything <URL>`
+  - 바이너리 셋업: `scripts/setup_craft_anything.py` (선택 사항, 미설치 시 내장 클린룸 엔진 가동)
+
 
 ### Issue tracker
 

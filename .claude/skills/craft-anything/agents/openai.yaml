@@ -1,0 +1,5 @@
+interface:
+  display_name: "Craft Anything Web Rebuild"
+  short_description: "Reverse-engineer and rebuild websites or landing pages with clean-room precision."
+policy:
+  allow_implicit_invocation: true
